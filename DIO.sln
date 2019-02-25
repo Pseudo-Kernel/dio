@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DIOPort", "DIOPort\DIOPort.vcxproj", "{87C0A844-5B08-4584-8D1D-BD20CDBA4DE0}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DIOTest", "DIOTest\DIOTest.vcxproj", "{BA57401A-A766-4A95-9E74-DDCF5A13EA1F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{87C0A844-5B08-4584-8D1D-BD20CDBA4DE0}.Debug|Win32.ActiveCfg = Debug|Win32
+		{87C0A844-5B08-4584-8D1D-BD20CDBA4DE0}.Debug|Win32.Build.0 = Debug|Win32
+		{87C0A844-5B08-4584-8D1D-BD20CDBA4DE0}.Release|Win32.ActiveCfg = Release|Win32
+		{87C0A844-5B08-4584-8D1D-BD20CDBA4DE0}.Release|Win32.Build.0 = Release|Win32
+		{BA57401A-A766-4A95-9E74-DDCF5A13EA1F}.Debug|Win32.ActiveCfg = Debug|Win32
+		{BA57401A-A766-4A95-9E74-DDCF5A13EA1F}.Debug|Win32.Build.0 = Debug|Win32
+		{BA57401A-A766-4A95-9E74-DDCF5A13EA1F}.Release|Win32.ActiveCfg = Release|Win32
+		{BA57401A-A766-4A95-9E74-DDCF5A13EA1F}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
