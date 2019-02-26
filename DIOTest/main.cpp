@@ -1,83 +1,68 @@
 
 #include <cstdio>
+#include <intrin.h>
 #include <Windows.h>
 #include <Shlwapi.h>
-#include "../DIOPort/dioctl.h"
+#include "../Include/dioctl.h"
+
+#include "DriverService.h"
+#include "PortAccessService.h"
 
 #pragma comment(lib, "shlwapi.lib")
 
-#if 0
-	SC_HANDLE hSCManager;
-	SC_HANDLE hService;
 
-	WCHAR BinaryPath[MAX_PATH];
 
-	GetCurrentDirectoryW(_countof(BinaryPath), BinaryPath);
-	PathAppendW(BinaryPath, L"dioport.sys");
+VOID PortAccessTest()
+{
+	printf("Testing port access...\n");
 
-	__asm int 03h
-	
-	hSCManager = OpenSCManagerW(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-	if(!hSCManager)
+	for (int i = 0; i < 0x10000; i++)
 	{
-		printf("Failed to open SC manager\n");
-		return -1;
+		__try
+		{
+			volatile UCHAR c = __inbyte((USHORT)i);
+			printf("Port 0x%04x allowed\n", i);
+		}
+		__except(EXCEPTION_EXECUTE_HANDLER)
+		{
+		}
 	}
 
-	hService = OpenServiceW(hSCManager, L"Dioport", SERVICE_ALL_ACCESS);
-	if(!hService)
-	{
-		hService = CreateServiceW(hSCManager, L"Dioport", L"Dioport", SERVICE_ALL_ACCESS, 
-			SERVICE_KERNEL_DRIVER, SERVICE_DEMAND_START, SERVICE_ERROR_NORMAL, 
-			BinaryPath, NULL, NULL, NULL, NULL, NULL);
-	}
-
-	if(!hService)
-	{
-		printf("Cannot open/create service\n");
-		return -1;
-	}
-
-	if(StartServiceW(hService, 0, NULL))
-	{
-		printf("Started!\n");
-		Sleep(INFINITE);
-	}
-	else
-	{
-		printf("Failed, Lasterror = %d\n", GetLastError());
-		DeleteService(hService);
-		Sleep(INFINITE);
-	}
-#endif
+	printf("End of the test\n\n");
+}
 
 int main()
 {
-	struct
+	CDriverService *Service = new CDriverService(L"Dioport", L"Dioport.sys", FALSE);
+	CPortAccessService *PortService = new CPortAccessService(L"\\\\.\\dioport");
+
+	try
 	{
-		DIO_PACKET_PORTACCESS hdr;
-		DIO_PORTACCESS_ENTRY entry;
-	} s;
+		Service->Uninstall(TRUE);
 
-	HANDLE hDevice = CreateFileW(L"\\\\.\\Dioport", GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
+		if (!Service->Install(TRUE))
+			throw ("Failed to install driver service\n");
 
-	printf("hDevice = 0x%x\n", hDevice);
+		if (!Service->Start())
+			throw ("Failed to start driver service\n");
 
-	s.hdr.Count = 1;
-	s.entry.StartAddress = 0x0000;
-	s.entry.EndAddress = 0xffff;
+		if (!PortService->RequestPortAccess(3, 0, 0xff, 0x2000, 0x20ff, 0x8000, 0x80ff))
+			throw ("Failed to request port access\n");
 
-	DWORD BytesReturned = 0;
-	printf("IOCTL result %d\n", 
-		DeviceIoControl(hDevice, DIO_IOCTL_SET_PORTACCESS, &s, sizeof(s), NULL, 0, &BytesReturned, NULL));
-
-	printf("Testing port read...\n");
-	__asm
-	{
-		mov dx, 60h
-		in al, dx
+		PortAccessTest();
 	}
-	printf("OK\n");
+	catch (CHAR *Message)
+	{
+		puts(Message);
+	}
+
+
+	printf("\nEnd\n");
+
+	delete PortService;
+	delete Service;
+
+	Sleep(INFINITE);
 
 	return 0;
 }

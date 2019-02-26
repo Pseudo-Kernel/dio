@@ -77,10 +77,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="DriverService.h" />
+    <ClInclude Include="PortAccessService.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DriverService.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="PortAccessService.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

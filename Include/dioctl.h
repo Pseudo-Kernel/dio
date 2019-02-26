@@ -21,10 +21,13 @@ typedef struct _DIO_PORTACCESS_ENTRY {
 	USHORT EndAddress;
 } DIO_PORTACCESS_ENTRY;
 
+#pragma warning(push)
+#pragma warning(disable: 4200)
 typedef struct _DIO_PACKET_PORTACCESS {
 	ULONG Count;
-//	DIO_PORTACCESS_ENTRY Entry[...];
+	DIO_PORTACCESS_ENTRY Entry[];
 } DIO_PACKET_PORTACCESS;
+#pragma warning(pop)
 
 typedef union _DIO_PACKET {
 	DIO_PACKET_PORTACCESS PortAccess;

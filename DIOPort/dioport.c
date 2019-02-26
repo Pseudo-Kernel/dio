@@ -2,10 +2,16 @@
 #include <ntddk.h>
 //#include <intrin.h>
 #include "iomap.h"
-#include "dioctl.h"
+#include "../Include/dioctl.h"
 
 #define DIO_ALLOC(_size)						ExAllocatePoolWithTag(NonPagedPool, (_size), 'OIDp')
 #define DIO_FREE(_addr)							ExFreePoolWithTag((_addr), 'OIDp')
+
+#define	DIO_IN_DEBUG_BREAKPOINT()	{	\
+	if (!(*KdDebuggerNotPresent))		\
+		__debugbreak();					\
+}
+
 
 C_ASSERT( sizeof(PEPROCESS) == 4 );
 
@@ -76,14 +82,15 @@ DioSetIoAccessMap(
 	if (!PortAccess)
 	{
 		// Zero out the access map.
-		RtlZeroMemory(AccessMap->Map, sizeof(AccessMap->Map));
+	//	RtlZeroMemory(AccessMap->Map, sizeof(AccessMap->Map));
+		RtlFillMemory(AccessMap->Map, sizeof(AccessMap->Map), -1);
 		return TRUE;
 	}
 
 	if (PortAccess->Count > DIO_PORTACCESS_ENTRY_MAXIMUM)
 		return FALSE;
 
-	RtlZeroMemory(AccessMap->Map, sizeof(AccessMap->Map));
+	RtlFillMemory(AccessMap->Map, sizeof(AccessMap->Map), -1);
 
 	Entry = (DIO_PORTACCESS_ENTRY *)(PortAccess + 1);
 
@@ -94,7 +101,7 @@ DioSetIoAccessMap(
 
 		while (Address < AddressEnd)
 		{
-			AccessMap->Map[Address >> 3] |= (UCHAR)(1 << (Address & 0x07));
+			AccessMap->Map[Address >> 3] &= ~(UCHAR)(1 << (Address & 0x07));
 			Address++;
 		}
 	}
@@ -189,6 +196,7 @@ DioDispatchNotSupported(
 	return STATUS_NOT_SUPPORTED;
 }
 
+
 NTSTATUS
 DioDispatchCreate(
 	IN PDEVICE_OBJECT DeviceObject, 
@@ -225,6 +233,8 @@ DioDispatchIoControl(
 	ULONG InputBufferLength;
 	DIO_PACKET *Packet;
 	NTSTATUS Status;
+
+	DIO_IN_DEBUG_BREAKPOINT();
 
 	Status = STATUS_SUCCESS;
 	IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
