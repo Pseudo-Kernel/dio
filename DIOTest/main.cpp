@@ -14,19 +14,30 @@
 
 VOID PortAccessTest()
 {
+	FILE *out = fopen("log.txt", "w");
 	printf("Testing port access...\n");
 
 	for (int i = 0; i < 0x10000; i++)
 	{
+		BOOL Allowed = FALSE;
 		__try
 		{
 			volatile UCHAR c = __inbyte((USHORT)i);
-			printf("Port 0x%04x allowed\n", i);
+			Allowed = TRUE;
 		}
 		__except(EXCEPTION_EXECUTE_HANDLER)
 		{
 		}
+
+		if(out)
+		{
+			fprintf(out, "Port 0x%04x : %s\n", i, 
+				Allowed ? "Allowed" : "Denied");
+		}
 	}
+
+	if(out)
+		fclose(out);
 
 	printf("End of the test\n\n");
 }
@@ -50,17 +61,19 @@ int main()
 			throw ("Failed to request port access\n");
 
 		PortAccessTest();
+
+		printf("Stopping service...\n");
+		Service->Stop();
 	}
 	catch (CHAR *Message)
 	{
 		puts(Message);
 	}
 
-
-	printf("\nEnd\n");
-
 	delete PortService;
 	delete Service;
+
+	printf("Press Ctrl+C to exit\n");
 
 	Sleep(INFINITE);
 

@@ -53,6 +53,8 @@ BOOL CDriverService::Install(LPWSTR ServiceName, LPWSTR DriverPath, BOOL ForceIn
 	hService = OpenServiceW(hSCManager, ServiceName, SERVICE_ALL_ACCESS);
 	if (hService)
 	{
+		SERVICE_STATUS Status;
+
 		if (!ForceInstall)
 		{
 			CloseServiceHandle(hService);
@@ -61,7 +63,7 @@ BOOL CDriverService::Install(LPWSTR ServiceName, LPWSTR DriverPath, BOOL ForceIn
 			return FALSE;
 		}
 
-		ControlService(hService, SERVICE_CONTROL_STOP, NULL);
+		ControlService(hService, SERVICE_CONTROL_STOP, &Status);
 
 		if (!DeleteService(hService))
 		{
@@ -122,6 +124,7 @@ BOOL CDriverService::Stop(LPWSTR ServiceName)
 {
 	SC_HANDLE hSCManager;
 	SC_HANDLE hService;
+	SERVICE_STATUS Status;
 
 	hSCManager = OpenSCManagerW(NULL, NULL, SC_MANAGER_ALL_ACCESS);
 	if (!hSCManager)
@@ -134,7 +137,7 @@ BOOL CDriverService::Stop(LPWSTR ServiceName)
 		return FALSE;
 	}
 
-	if (!ControlService(hService, SERVICE_CONTROL_STOP, NULL))
+	if (!ControlService(hService, SERVICE_CONTROL_STOP, &Status))
 	{
 		CloseServiceHandle(hSCManager);
 		CloseServiceHandle(hService);
@@ -165,7 +168,8 @@ BOOL CDriverService::Uninstall(LPWSTR ServiceName, BOOL ForceStop)
 
 	if (ForceStop)
 	{
-		ControlService(hService, SERVICE_CONTROL_STOP, NULL);
+		SERVICE_STATUS Status;
+		ControlService(hService, SERVICE_CONTROL_STOP, &Status);
 	}
 
 	if (!DeleteService(hService))

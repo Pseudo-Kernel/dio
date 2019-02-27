@@ -7,6 +7,8 @@
 #define DIO_ALLOC(_size)						ExAllocatePoolWithTag(NonPagedPool, (_size), 'OIDp')
 #define DIO_FREE(_addr)							ExFreePoolWithTag((_addr), 'OIDp')
 
+#define	DIO_TRACE(_fmt, ...)					DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, (_fmt), __VA_ARGS__)
+
 #define	DIO_IN_DEBUG_BREAKPOINT()	{	\
 	if (!(*KdDebuggerNotPresent))		\
 		__debugbreak();					\
@@ -79,18 +81,19 @@ DioSetIoAccessMap(
 	DIO_PORTACCESS_ENTRY *Entry;
 	ULONG i;
 
+	RtlFillMemory(AccessMap->Map, sizeof(AccessMap->Map), -1);
+
 	if (!PortAccess)
 	{
-		// Zero out the access map.
-	//	RtlZeroMemory(AccessMap->Map, sizeof(AccessMap->Map));
-		RtlFillMemory(AccessMap->Map, sizeof(AccessMap->Map), -1);
+		DIO_TRACE("%s: Any port access will be denied\n", __FUNCTION__);
 		return TRUE;
 	}
 
 	if (PortAccess->Count > DIO_PORTACCESS_ENTRY_MAXIMUM)
+	{
+		DIO_TRACE("%s: Maximum entry count exceeded\n", __FUNCTION__);
 		return FALSE;
-
-	RtlFillMemory(AccessMap->Map, sizeof(AccessMap->Map), -1);
+	}
 
 	Entry = (DIO_PORTACCESS_ENTRY *)(PortAccess + 1);
 
@@ -99,8 +102,23 @@ DioSetIoAccessMap(
 		ULONG Address = (ULONG)(USHORT)Entry[i].StartAddress;
 		ULONG AddressEnd = (ULONG)(USHORT)Entry[i].EndAddress;
 
-		while (Address < AddressEnd)
+		if (AddressEnd > 0xffff)
+			AddressEnd = 0xffff;
+
+		if (Address <= AddressEnd)
 		{
+			DIO_TRACE("%s: [%d] Allow port access 0x%04x - 0x%04x\n", 
+				__FUNCTION__, i, Address, AddressEnd);
+		}
+		else
+		{
+			DIO_TRACE("%s: [%d] Port access range 0x%04x - 0x%04x will be ignored\n", 
+				__FUNCTION__, i, Address, AddressEnd);
+		}
+
+		while (Address <= AddressEnd)
+		{
+			// Zero the bits for port permission.
 			AccessMap->Map[Address >> 3] &= ~(UCHAR)(1 << (Address & 0x07));
 			Address++;
 		}
@@ -233,10 +251,13 @@ DioDispatchIoControl(
 	ULONG InputBufferLength;
 	DIO_PACKET *Packet;
 	NTSTATUS Status;
+	PEPROCESS CurrentProcess;
 
-	DIO_IN_DEBUG_BREAKPOINT();
+//	DIO_IN_DEBUG_BREAKPOINT();
 
+	CurrentProcess = PsGetCurrentProcess();
 	Status = STATUS_SUCCESS;
+
 	IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
 	IoControlCode = IoStackLocation->Parameters.DeviceIoControl.IoControlCode;
 	InputBufferLength = IoStackLocation->Parameters.DeviceIoControl.InputBufferLength;
@@ -261,6 +282,7 @@ DioDispatchIoControl(
 		Packet = (DIO_PACKET *)Irp->AssociatedIrp.SystemBuffer;
 		if (!DioValidatePacketBuffer(Packet, InputBufferLength, IoControlCode))
 		{
+			DIO_TRACE("%s: Buffer validation failed\n", __FUNCTION__);
 			Status = STATUS_INVALID_PARAMETER;
 			break;
 		}
@@ -270,6 +292,7 @@ DioDispatchIoControl(
 		case DIO_IOCTL_SET_PORTACCESS:
 			if (!DioRegisterSelf())
 			{
+				DIO_TRACE("%s: Process 0x%p is already registered\n", __FUNCTION__, DioRegisteredProcess);
 				Status = STATUS_ACCESS_DENIED;
 				break;
 			}
@@ -277,20 +300,28 @@ DioDispatchIoControl(
 			// Create the I/O access map from packet.
 			if (!DioSetIoAccessMap(&Packet->PortAccess, DioIoAccessMap))
 			{
+				DIO_TRACE("%s: Failed to prepare access map\n", __FUNCTION__);
 				Status = STATUS_INVALID_PARAMETER;
 				break;
 			}
 
+			DIO_TRACE("%s: Setting port permission for process 0x%p (%d)\n", 
+				__FUNCTION__, CurrentProcess, PsGetProcessId(CurrentProcess));
+
+			Ke386IoSetAccessProcess(CurrentProcess, 1);
 			Ke386SetIoAccessMap(1, DioIoAccessMap);
-			Ke386IoSetAccessProcess(PsGetCurrentProcess(), 1);
 			break;
 
 		case DIO_IOCTL_RESET_PORTACCESS:
 			if (!DioSetIoAccessMap(NULL, DioIoAccessMap))
 			{
+				DIO_TRACE("%s: Failed to prepare access map\n", __FUNCTION__);
 				Status = STATUS_INVALID_PARAMETER;
 				break;
 			}
+
+			DIO_TRACE("%s: Resetting port permission to initial state for process 0x%p (%d)\n", 
+				__FUNCTION__, CurrentProcess, PsGetProcessId(CurrentProcess));
 
 			Ke386IoSetAccessProcess(PsGetCurrentProcess(), 0);
 			break;
@@ -318,7 +349,7 @@ VOID
 DioDriverUnload(
 	IN PDRIVER_OBJECT DriverObject)
 {
-	DbgPrint("%s\n", __FUNCTION__);
+	DIO_TRACE("%s\n", __FUNCTION__);
 
 	IoDeleteSymbolicLink(&DioDosDeviceName);
 	IoDeleteDevice(DioDeviceObject);
@@ -346,7 +377,9 @@ DriverEntry(
 	PDEVICE_OBJECT DeviceObject;
 	ULONG i;
 
-	DbgPrint("%s\n", __FUNCTION__);
+	DIO_TRACE(" ********** DIO board I/O helper ********** \n");
+	DIO_TRACE("Last built " __DATE__ " " __TIME__ "\n");
+	DIO_TRACE("%s\n", __FUNCTION__);
 
 	RtlInitUnicodeString(&DioDeviceName, L"\\Device\\Dioport");
 	RtlInitUnicodeString(&DioDosDeviceName, L"\\DosDevices\\Dioport");
@@ -354,14 +387,14 @@ DriverEntry(
 	AccessMap = (IO_ACCESS_MAP *)DIO_ALLOC(sizeof(*AccessMap));
 	if (!AccessMap)
 	{
-		DbgPrint("ExAllocatePoolWithTag failed\n");
+		DIO_TRACE("ExAllocatePoolWithTag failed\n");
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
 	Status = IoCreateDevice(DriverObject, 0, &DioDeviceName, FILE_DEVICE_UNKNOWN, 0, FALSE, &DeviceObject);
 	if (!NT_SUCCESS(Status))
 	{
-		DbgPrint("IoCreateDevice failed\n");
+		DIO_TRACE("IoCreateDevice failed\n");
 		DIO_FREE(AccessMap);
 
 		return Status;
@@ -373,7 +406,7 @@ DriverEntry(
 		IoDeleteDevice(DeviceObject);
 		DIO_FREE(AccessMap);
 		
-		DbgPrint("IoCreateSymbolicLink failed\n");
+		DIO_TRACE("IoCreateSymbolicLink failed\n");
 		return Status;
 	}
 
