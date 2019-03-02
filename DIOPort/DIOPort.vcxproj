@@ -43,11 +43,15 @@ copy "$(ProjectDir)objchk_win7_x86\i386\$(TargetName).sys" "$(OutDir)$(TargetNam
 call ddkbuild -WIN7 checked . -cZ
 copy "$(ProjectDir)objchk_win7_x86\i386\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
 </NMakeReBuildCommandLine>
-    <NMakePreprocessorDefinitions>WIN32;_DEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
+    <NMakePreprocessorDefinitions>WIN32;_X86_;NTDDI_VERSION=NTDDI_WINXP;_DEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <SourcePath>C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt;C:\WinDDK\7600.16385.1\inc\ddk</SourcePath>
     <ReferencePath>C:\WinDDK\7600.16385.1\lib\win7\i386</ReferencePath>
     <LibraryPath>C:\WinDDK\7600.16385.1\lib\win7\i386</LibraryPath>
-    <NMakeIncludeSearchPath>C:\WinDDK\7600.16385.1\inc\ddk;C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt;$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
+    <NMakeIncludeSearchPath>C:\WinDDK\7600.16385.1\inc;C:\WinDDK\7600.16385.1\inc\ddk;C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt</NMakeIncludeSearchPath>
+    <AdditionalOptions>
+    </AdditionalOptions>
+    <NMakeForcedIncludes>
+    </NMakeForcedIncludes>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <NMakeBuildCommandLine>del "$(OutDir)$(TargetName).sys"
@@ -59,10 +63,10 @@ copy "$(ProjectDir)objfre_win7_x86\i386\$(TargetName).sys" "$(OutDir)$(TargetNam
 call ddkbuild -WIN7 free . -cZ
 copy "$(ProjectDir)objfre_win7_x86\i386\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
 </NMakeReBuildCommandLine>
-    <NMakePreprocessorDefinitions>WIN32;NDEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
+    <NMakePreprocessorDefinitions>WIN32;_X86_;NTDDI_VERSION=NTDDI_WINXP;NDEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <SourcePath>C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt;C:\WinDDK\7600.16385.1\inc\ddk</SourcePath>
     <ReferencePath>C:\WinDDK\7600.16385.1\lib\win7\i386</ReferencePath>
-    <NMakeIncludeSearchPath>C:\WinDDK\7600.16385.1\inc\ddk;C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt;$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
+    <NMakeIncludeSearchPath>C:\WinDDK\7600.16385.1\inc;C:\WinDDK\7600.16385.1\inc\ddk;C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt</NMakeIncludeSearchPath>
     <LibraryPath>C:\WinDDK\7600.16385.1\lib\win7\i386</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup>
