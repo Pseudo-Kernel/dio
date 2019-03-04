@@ -180,9 +180,16 @@ DioRegisterSelf(
 	RegisteredProcess = (PEPROCESS)_InterlockedCompareExchange((LONG *)&DiopRegisteredProcess, (LONG)CurrentProcess, 0);
 
 	if (RegisteredProcess != NULL && RegisteredProcess != CurrentProcess)
+	{
+		DIO_TRACE("%s: Failed to register %d because it is already registered\n", 
+			__FUNCTION__, PsGetProcessId(CurrentProcess));
 		return FALSE;
+	}
 
 	ObfReferenceObject(CurrentProcess);
+
+	DIO_TRACE("%s: Registered %d\n", __FUNCTION__, PsGetProcessId(CurrentProcess));
+
 	return TRUE;
 }
 
@@ -195,10 +202,15 @@ DioUnregister(
 	
 	RegisteredProcess = (PEPROCESS)_InterlockedCompareExchange((LONG *)&DiopRegisteredProcess, 0, (LONG)CurrentProcess);
 	if (!RegisteredProcess)
+	{
+		DIO_TRACE("%s: Failed to unregister because no process is registered\n", __FUNCTION__);
 		return FALSE;
+	}
 
 	if (DisableIoAccess)
 		Ke386IoSetAccessProcess(RegisteredProcess, 0);
+
+	DIO_TRACE("%s: Unregistered %d\n", __FUNCTION__, PsGetProcessId(RegisteredProcess));
 
 	ObfDereferenceObject(RegisteredProcess);
 	return TRUE;
@@ -211,6 +223,8 @@ DioForceUnregister(
 	KIRQL Irql;
 	BOOLEAN Unregistered;
 	PEPROCESS RegisteredProcess;
+
+//	DIO_TRACE("%s: Trying to unregister %d\n", __FUNCTION__, UnregisterProcessId);
 
 	// Acquire the lock so following code is not executed simultaneously.
 	KeAcquireSpinLock(&DiopForceUnregisterLock, &Irql);
@@ -237,6 +251,9 @@ DioForceUnregister(
 	}
 
 	KeReleaseSpinLock(&DiopForceUnregisterLock, Irql);
+
+	if (Unregistered)
+		DIO_TRACE("%s: Unregistered %d\n", __FUNCTION__, UnregisterProcessId);
 
 	return Unregistered;
 }
@@ -329,6 +346,8 @@ DioDispatchIoControl(
 	IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
 	IoControlCode = IoStackLocation->Parameters.DeviceIoControl.IoControlCode;
 	InputBufferLength = IoStackLocation->Parameters.DeviceIoControl.InputBufferLength;
+
+	DIO_TRACE("%s: IOCTL from process %d\n", __FUNCTION__, PsGetProcessId(CurrentProcess));
 
 	do
 	{
@@ -423,7 +442,7 @@ DioDriverUnload(
 	IN PDRIVER_OBJECT DriverObject)
 {
 #ifdef DIO_SUPPORT_UNLOAD
-	DIO_TRACE("%s\n", __FUNCTION__);
+	DIO_TRACE("%s: Shutdowning...\n", __FUNCTION__);
 
 	IoDeleteSymbolicLink(&DiopDosDeviceName);
 	IoDeleteDevice(DiopDeviceObject);
@@ -459,7 +478,7 @@ DriverEntry(
 
 	DIO_TRACE(" ********** DIO board I/O helper ********** \n");
 	DIO_TRACE("Last built " __DATE__ " " __TIME__ "\n");
-	DIO_TRACE("%s\n", __FUNCTION__);
+	DIO_TRACE("%s: Initializing...\n", __FUNCTION__);
 
 	RtlInitUnicodeString(&DiopDeviceName, L"\\Device\\Dioport");
 	RtlInitUnicodeString(&DiopDosDeviceName, L"\\DosDevices\\Dioport");
@@ -501,6 +520,16 @@ DriverEntry(
 #else
 	DriverObject->DriverUnload = NULL;
 #endif
+
+	//
+	// Register our notify routine.
+	//
+
+	Status = PsSetCreateProcessNotifyRoutine(DiopCreateProcessNotifyRoutine, FALSE);
+	if (!NT_SUCCESS(Status))
+		DIO_TRACE("%s: WARNING - Failed to register notify routine (0x%08lx)\n", __FUNCTION__, Status);
+
+	DIO_TRACE("%s: Initialization done.\n", __FUNCTION__);
 
 
 	//

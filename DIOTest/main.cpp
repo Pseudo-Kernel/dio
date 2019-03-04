@@ -1,5 +1,6 @@
 
 #include <cstdio>
+#include <conio.h>
 #include <intrin.h>
 #include <Windows.h>
 #include <Shlwapi.h>
@@ -67,8 +68,11 @@ int main()
 		if (!PortService->RequestPortAccess(3, 0x7000, 0x700f, 0x7020, 0x702f, 0x7040, 0x705f))
 			throw ("Failed to request port access\n");
 
-		printf("Testing port access...\n");
 		PortAccessTest();
+
+		printf("Press any key to stop driver");
+		getch();
+		printf("\n");
 
 		printf("Stopping driver service...\n");
 		Service->Stop();
