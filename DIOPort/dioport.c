@@ -243,8 +243,8 @@ DioForceUnregister(
 			// OK, dereference it
 			ObfDereferenceObject(RegisteredProcess);
 
-			// FIXME : Should we insert the barrier here?
-			DiopRegisteredProcess = NULL;
+			// We don't need barrier, use xchg instead
+			_InterlockedExchange((volatile LONG *)&DiopRegisteredProcess, 0);
 
 			Unregistered = TRUE;
 		}

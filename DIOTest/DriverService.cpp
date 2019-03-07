@@ -6,13 +6,30 @@
 
 
 CDriverService::CDriverService(LPWSTR ServiceName, LPWSTR DriverFileName, BOOL AssumeFullPath)
+/**
+ *	@brief	Constructor of driver service.
+ *	
+ *	@param	[in] ServiceName			Service name of the driver.
+ *	@param	[in] DriverFileName			File name of the driver.
+ *	@param	[in] AssumeFullPath			If this value is non-zero, DriverFileName is treated as full path.
+ *	@return								None.
+ *	
+ */
 {
+#if _MSC_VER >= 1300
 	wcscpy_s(m_ServiceName, _countof(m_ServiceName), ServiceName);
+#else
+	wcscpy(m_ServiceName, ServiceName);
+#endif
 
 	if (AssumeFullPath)
 	{
 		// Assume the DriverFileName has a full path.
+#if _MSC_VER >= 1300
 		wcscpy_s(m_DriverPath, _countof(m_DriverPath), DriverFileName);
+#else
+		wcscpy(m_DriverPath, DriverFileName);
+#endif
 	}
 	else
 	{
@@ -31,17 +48,35 @@ CDriverService::CDriverService(LPWSTR ServiceName, LPWSTR DriverFileName, BOOL A
 			// Assertion failed!
 			m_DriverPath[0] = 0;
 			if (IsDebuggerPresent())
-				__debugbreak();
+				DebugBreak();
 		}
 	}
 }
 
 CDriverService::~CDriverService(void)
+/**
+ *	@brief	Destructor of driver service.
+ *	
+ *	@return	None.
+ *	
+ */
 {
 }
 
 
 BOOL CDriverService::Install(LPWSTR ServiceName, LPWSTR DriverPath, BOOL ForceInstall)
+/**
+ *	@brief	Installs the driver service.
+ *	
+ *	The type of service start is always SERVICE_DEMAND_START.
+ *
+ *	@param	[in] ServiceName			Service name of the driver.
+ *	@param	[in] DriverPath				Full path of the driver.
+ *	@param	[in] ForceInstall			If this value is non-zero and same service exists,\n
+ *                                      Install() will try stop and delete service before installation.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	SC_HANDLE hSCManager;
 	SC_HANDLE hService;
@@ -92,6 +127,13 @@ BOOL CDriverService::Install(LPWSTR ServiceName, LPWSTR DriverPath, BOOL ForceIn
 }
 
 BOOL CDriverService::Start(LPWSTR ServiceName)
+/**
+ *	@brief	Starts the driver service.
+ *	
+ *	@param	[in] ServiceName			Service name of the driver.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	SC_HANDLE hSCManager;
 	SC_HANDLE hService;
@@ -107,7 +149,7 @@ BOOL CDriverService::Start(LPWSTR ServiceName)
 		return FALSE;
 	}
 
-	if (!StartService(hService, 0, NULL))
+	if (!StartServiceW(hService, 0, NULL))
 	{
 		CloseServiceHandle(hService);
 		CloseServiceHandle(hSCManager);
@@ -121,6 +163,16 @@ BOOL CDriverService::Start(LPWSTR ServiceName)
 }
 
 BOOL CDriverService::Stop(LPWSTR ServiceName)
+/**
+ *	@brief	Stops the driver service.
+ *	
+ *	Make sure that all instances of driver is closed before stop.\n
+ *	If not, the driver will be never stopped.\n
+ *
+ *	@param	[in] ServiceName			Service name of the driver.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	SC_HANDLE hSCManager;
 	SC_HANDLE hService;
@@ -151,6 +203,15 @@ BOOL CDriverService::Stop(LPWSTR ServiceName)
 }
 
 BOOL CDriverService::Uninstall(LPWSTR ServiceName, BOOL ForceStop)
+/**
+ *	@brief	Uninstalls the driver service.
+ *	
+ *	@param	[in] ServiceName			Service name of the driver.
+ *	@param	[in] ForceStop				If this value is non-zero, Uninstall() will try to stop and\n
+ *                                      delete service.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	SC_HANDLE hSCManager;
 	SC_HANDLE hService;
@@ -188,21 +249,54 @@ BOOL CDriverService::Uninstall(LPWSTR ServiceName, BOOL ForceStop)
 
 
 BOOL CDriverService::Install(BOOL ForceInstall)
+/**
+ *	@brief	Installs the driver service.
+ *	
+ *	The type of service start is always SERVICE_DEMAND_START.
+ *
+ *	@param	[in] ForceInstall			If this value is non-zero and same service exists,\n
+ *                                      Install() will try stop and delete service before installation.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	return Install(m_ServiceName, m_DriverPath, ForceInstall);
 }
 
 BOOL CDriverService::Start()
+/**
+ *	@brief	Starts the driver service.
+ *	
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	return Start(m_ServiceName);
 }
 
 BOOL CDriverService::Stop()
+/**
+ *	@brief	Stops the driver service.
+ *	
+ *	Make sure that all instances of driver is closed before stop.\n
+ *	If not, the driver will be never stopped.\n
+ *
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	return Stop(m_ServiceName);
 }
 
 BOOL CDriverService::Uninstall(BOOL ForceStop)
+/**
+ *	@brief	Uninstalls the driver service.
+ *	
+ *	@param	[in] ForceStop				If this value is non-zero, Uninstall() will try to stop and\n
+ *                                      delete service.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	return Uninstall(m_ServiceName, ForceStop);
 }

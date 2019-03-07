@@ -3,7 +3,11 @@
 
 CPortAccessService::CPortAccessService(LPWSTR DeviceName)
 {
+#if _MSC_VER >= 1300
 	wcscpy_s(m_DeviceName, _countof(m_DeviceName), DeviceName);
+#else
+	wcscpy(m_DeviceName, DeviceName);
+#endif
 }
 
 CPortAccessService::~CPortAccessService(void)
@@ -62,6 +66,25 @@ VOID CPortAccessService::InternalFreePortAccessPacket(DIO_PACKET_PORTACCESS *Por
 }
 
 BOOL CPortAccessService::RequestPortAccess(ULONG Count, USHORT StartAddress1, USHORT EndAddress1, ...)
+/**
+ *	@brief	Request the enable access for port.
+ *
+ *	Note that only the recent port access setting will be applied.\n
+ *	That is, previous setting will be deleted when you call RequestPortAccess().\n
+ *	Port access range is inclusive.\n
+ *	\n
+ *	To request access for (one or) multiple ranges, following examples are valid:\n
+ *	RequestPortAccess(1, 0x7000, 0x701f); // enable access for 0x7000 - 0x701f\n
+ *	RequestPortAccess(2, 0x7000, 0x701f, 0x7030, 0x703f); // enable access for 0x7000 - 0x701f, 0x7030 - 0x703f\n
+ *	
+ *	@param	[in] Count					Count of port address range pair.\n
+ *										If this value is zero, other parameters will be ignored.
+ *	@param	[in] StartAddress1			1st starting address of port.
+ *	@param	[in] EndAddress1			1st ending address of port.
+ *	@param	[in] ...					Address range pairs.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	va_list Args;
 	DIO_PACKET_PORTACCESS *Packet;
@@ -95,6 +118,18 @@ BOOL CPortAccessService::RequestPortAccess(ULONG Count, USHORT StartAddress1, US
 }
 
 BOOL CPortAccessService::RequestPortAccess(ULONG Count, DIO_PORTACCESS_ENTRY *PortAccess)
+/**
+ *	@brief	Request the enable access for port.
+ *
+ *	Note that only the recent port access setting will be applied.\n
+ *	That is, previous setting will be deleted when you call RequestPortAccess().\n
+ *	Port access range is inclusive.\n
+ *	
+ *	@param	[in] Count					Count of port access entry.
+ *	@param	[in] PortAccess				Address of port access entries.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	DIO_PACKET_PORTACCESS *Packet;
 	ULONG PacketLength;
@@ -124,6 +159,18 @@ BOOL CPortAccessService::RequestPortAccess(ULONG Count, DIO_PORTACCESS_ENTRY *Po
 }
 
 BOOL CPortAccessService::RequestPortAccess(USHORT StartAddress, USHORT EndAddress)
+/**
+ *	@brief	Request the enable access for port.
+ *
+ *	Note that only the recent port access setting will be applied.\n
+ *	That is, previous setting will be deleted when you call RequestPortAccess().\n
+ *	Port access range is inclusive.\n
+ *	
+ *	@param	[in] StartAddress			Starting address of port.
+ *	@param	[in] EndAddress				Ending address of port.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	DIO_PORTACCESS_ENTRY PortAccess;
 	PortAccess.StartAddress = StartAddress;
@@ -133,6 +180,12 @@ BOOL CPortAccessService::RequestPortAccess(USHORT StartAddress, USHORT EndAddres
 }
 
 BOOL CPortAccessService::DisablePortAccess()
+/**
+ *	@brief	Request the disable access for whole port address.
+ *
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	HANDLE hDevice = ::CreateFileW(m_DeviceName, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
 	if (hDevice == INVALID_HANDLE_VALUE)

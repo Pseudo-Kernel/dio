@@ -35,11 +35,17 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <NMakeBuildCommandLine>del "$(OutDir)$(TargetName).sys"
+if "%WIN7BASE%"=="" (
+    set WIN7BASE=C:\WinDDK\7600.16385.1
+)
 call ddkbuild -WIN7 checked .
 copy "$(ProjectDir)objchk_win7_x86\i386\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
 </NMakeBuildCommandLine>
     <NMakeOutput>DIOPort.sys</NMakeOutput>
     <NMakeReBuildCommandLine>del "$(OutDir)$(TargetName).sys"
+if "%WIN7BASE%"=="" (
+    set WIN7BASE=C:\WinDDK\7600.16385.1
+)
 call ddkbuild -WIN7 checked . -cZ
 copy "$(ProjectDir)objchk_win7_x86\i386\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
 </NMakeReBuildCommandLine>
@@ -55,11 +61,17 @@ copy "$(ProjectDir)objchk_win7_x86\i386\$(TargetName).sys" "$(OutDir)$(TargetNam
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <NMakeBuildCommandLine>del "$(OutDir)$(TargetName).sys"
+if "%WIN7BASE%"=="" (
+    set WIN7BASE=C:\WinDDK\7600.16385.1
+)
 call ddkbuild -WIN7 free .
 copy "$(ProjectDir)objfre_win7_x86\i386\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
 </NMakeBuildCommandLine>
     <NMakeOutput>DIOPort.sys</NMakeOutput>
     <NMakeReBuildCommandLine>del "$(OutDir)$(TargetName).sys"
+if "%WIN7BASE%"=="" (
+    set WIN7BASE=C:\WinDDK\7600.16385.1
+)
 call ddkbuild -WIN7 free . -cZ
 copy "$(ProjectDir)objfre_win7_x86\i386\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
 </NMakeReBuildCommandLine>

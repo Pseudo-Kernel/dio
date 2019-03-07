@@ -24,7 +24,10 @@ VOID PortAccessTest()
 
 		__try
 		{
-			volatile UCHAR c = __inbyte((USHORT)i);
+			// WARNING : Accessing unknown port address is dangerous.
+			//           It may cause unexpected behavior such as BSOD, system crash, etc.
+
+			UCHAR c = __inbyte((USHORT)i);
 			Allowed = TRUE;
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER)
@@ -51,35 +54,46 @@ int main()
 {
 	CDriverService *Service = new CDriverService(L"Dioport", L"Dioport.sys", FALSE);
 	CPortAccessService *PortService = new CPortAccessService(L"\\\\.\\dioport");
+	BOOL IsLoaded = FALSE;
 
-	try
+	do
 	{
 		printf("Stopping the driver...\n");
 		Service->Uninstall(TRUE);
 
 		if (!Service->Install(TRUE))
-			throw ("Failed to install driver service\n");
+		{
+			printf("Failed to install driver service\n");
+			break;
+		}
 
 		printf("Starting driver...\n");
 		if (!Service->Start())
-			throw ("Failed to start driver service\n");
+		{
+			printf("Failed to start driver service\n");
+			break;
+		}
+
+		IsLoaded = TRUE;
 
 		printf("Request for port access...\n");
 		if (!PortService->RequestPortAccess(3, 0x7000, 0x700f, 0x7020, 0x702f, 0x7040, 0x705f))
-			throw ("Failed to request port access\n");
+		{
+			printf("Failed to request port access\n");
+			break;
+		}
 
 		PortAccessTest();
+	} while (FALSE);
 
+	if (IsLoaded)
+	{
 		printf("Press any key to stop driver");
 		getch();
 		printf("\n");
 
 		printf("Stopping driver service...\n");
 		Service->Stop();
-	}
-	catch (CHAR *Message)
-	{
-		puts(Message);
 	}
 
 	delete PortService;
