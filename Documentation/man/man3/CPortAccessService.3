@@ -1,0 +1,197 @@
+.TH "CPortAccessService" 3 "Sun Mar 10 2019" "DIO" \" -*- nroff -*-
+.ad l
+.nh
+.SH NAME
+CPortAccessService
+.SH SYNOPSIS
+.br
+.PP
+.PP
+\fC#include <PortAccessService\&.h>\fP
+.SS "Public Member Functions"
+
+.in +1c
+.ti -1c
+.RI "\fBCPortAccessService\fP (LPWSTR DeviceName)"
+.br
+.RI "Class constructor\&. "
+.ti -1c
+.RI "\fB~CPortAccessService\fP (void)"
+.br
+.RI "Class destructor\&. "
+.ti -1c
+.RI "BOOL \fBRequestPortAccess\fP (ULONG Count,\&.\&.\&.)"
+.br
+.RI "Requests the enable access for port\&. "
+.ti -1c
+.RI "BOOL \fBRequestPortAccess\fP (ULONG Count, \fBDIO_PORTACCESS_ENTRY\fP *PortAccess)"
+.br
+.RI "Requests the enable access for port\&. "
+.ti -1c
+.RI "BOOL \fBRequestPortAccess\fP (USHORT StartAddress, USHORT EndAddress)"
+.br
+.RI "Requests the enable access for port\&. "
+.ti -1c
+.RI "BOOL \fBDisablePortAccess\fP ()"
+.br
+.RI "Requests the disable access for whole port address\&. "
+.in -1c
+.SH "Detailed Description"
+.PP 
+Definition at line 6 of file PortAccessService\&.h\&.
+.SH "Constructor & Destructor Documentation"
+.PP 
+.SS "CPortAccessService::CPortAccessService (LPWSTR DeviceName)"
+
+.PP
+Class constructor\&. Note that the maximum length of DeviceName is MAX_PATH, including the null-terminator\&.
+.PP
+\fBParameters:\fP
+.RS 4
+\fIDeviceName\fP Device name that starts with '\\\\\\\\\&.\\\\' 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+None\&. 
+.RE
+.PP
+
+.PP
+Definition at line 4 of file PortAccessService\&.cpp\&.
+.SS "CPortAccessService::~CPortAccessService (void)"
+
+.PP
+Class destructor\&. 
+.PP
+\fBReturns:\fP
+.RS 4
+None\&. 
+.RE
+.PP
+
+.PP
+Definition at line 22 of file PortAccessService\&.cpp\&.
+.SH "Member Function Documentation"
+.PP 
+.SS "BOOL CPortAccessService::DisablePortAccess ()"
+
+.PP
+Requests the disable access for whole port address\&. 
+.PP
+\fBReturns:\fP
+.RS 4
+Non-zero if successful\&. 
+.RE
+.PP
+
+.PP
+Definition at line 244 of file PortAccessService\&.cpp\&.
+.SS "BOOL CPortAccessService::RequestPortAccess (ULONG Count,  \&.\&.\&.)"
+
+.PP
+Requests the enable access for port\&. Note that only the recent port access setting will be applied\&.
+.br
+That is, previous setting will be deleted when you call \fBRequestPortAccess()\fP\&.
+.br
+Port access range is inclusive\&.
+.br
+
+.br
+To request access for (one or) multiple ranges, see following examples:
+.br
+
+.br
+1 address range (0x7000 to 0x701f)
+.br
+=> RequestPortAccess(1, 0x7000, 0x701f);
+.br
+2 address ranges (0x7000 to 0x701f), (0x7030 to 0x703f)
+.br
+=> RequestPortAccess(2, 0x7000, 0x701f, 0x7030, 0x703f);
+.br
+3 address ranges (0x7000 to 0x701f), (0x7030 to 0x703f), (0x7050 to 0x705f)
+.br
+=> RequestPortAccess(3, 0x7000, 0x701f, 0x7030, 0x703f, 0x7050, 0x705f);
+.br
+N address ranges (s1 to d1), (s2 to d2), \&.\&.\&., (sN to dN)
+.br
+=> RequestPortAccess(N, s1, d1, s2, d2, \&.\&.\&., sN, dN);
+.br
+
+.br
+ 
+.PP
+\fBParameters:\fP
+.RS 4
+\fICount\fP Count of port address range pair\&.
+.br
+ If this value is zero, other parameters will be ignored\&. 
+.br
+\fI\&.\&.\&.\fP Address range pairs (USHORT, USHORT)\&. 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+Non-zero if successful\&. 
+.RE
+.PP
+
+.PP
+Definition at line 126 of file PortAccessService\&.cpp\&.
+.SS "BOOL CPortAccessService::RequestPortAccess (ULONG Count, \fBDIO_PORTACCESS_ENTRY\fP * PortAccess)"
+
+.PP
+Requests the enable access for port\&. Note that only the recent port access setting will be applied\&.
+.br
+That is, previous setting will be deleted when you call \fBRequestPortAccess()\fP\&.
+.br
+Port access range is inclusive\&.
+.br
+ 
+.PP
+\fBParameters:\fP
+.RS 4
+\fICount\fP Count of port access entry\&. 
+.br
+\fIPortAccess\fP Address of port access entries\&. 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+Non-zero if successful\&. 
+.RE
+.PP
+
+.PP
+Definition at line 184 of file PortAccessService\&.cpp\&.
+.SS "BOOL CPortAccessService::RequestPortAccess (USHORT StartAddress, USHORT EndAddress)"
+
+.PP
+Requests the enable access for port\&. Note that only the recent port access setting will be applied\&.
+.br
+That is, previous setting will be deleted when you call \fBRequestPortAccess()\fP\&.
+.br
+Port access range is inclusive\&.
+.br
+ 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIStartAddress\fP Starting address of port\&. 
+.br
+\fIEndAddress\fP Ending address of port\&. 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+Non-zero if successful\&. 
+.RE
+.PP
+
+.PP
+Definition at line 223 of file PortAccessService\&.cpp\&.
+
+.SH "Author"
+.PP 
+Generated automatically by Doxygen for DIO from the source code\&.

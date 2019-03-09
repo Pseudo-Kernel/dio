@@ -1,0 +1,50 @@
+.TH "DIOPort/iomap.h" 3 "Sun Mar 10 2019" "DIO" \" -*- nroff -*-
+.ad l
+.nh
+.SH NAME
+DIOPort/iomap.h
+.SH SYNOPSIS
+.br
+.PP
+.SS "Classes"
+
+.in +1c
+.ti -1c
+.RI "struct \fB_IO_ACCESS_MAP\fP"
+.br
+.in -1c
+.SS "Typedefs"
+
+.in +1c
+.ti -1c
+.RI "typedef struct \fB_IO_ACCESS_MAP\fP \fBIO_ACCESS_MAP\fP"
+.br
+.in -1c
+.SS "Functions"
+
+.in +1c
+.ti -1c
+.RI "BOOLEAN \fBKe386SetIoAccessMap\fP (IN ULONG MapNumber, IN \fBIO_ACCESS_MAP\fP *AccessMap)"
+.br
+.ti -1c
+.RI "BOOLEAN \fBKe386QueryIoAccessMap\fP (IN ULONG MapNumber, IN OUT \fBIO_ACCESS_MAP\fP *AccessMap)"
+.br
+.ti -1c
+.RI "BOOLEAN \fBKe386IoSetAccessProcess\fP (IN PEPROCESS Process, IN ULONG MapNumber)"
+.br
+.in -1c
+.SH "Typedef Documentation"
+.PP 
+.SS "typedef struct \fB_IO_ACCESS_MAP\fP  \fBIO_ACCESS_MAP\fP"
+
+.SH "Function Documentation"
+.PP 
+.SS "BOOLEAN Ke386IoSetAccessProcess (IN PEPROCESS Process, IN ULONG MapNumber)"
+
+.SS "BOOLEAN Ke386QueryIoAccessMap (IN ULONG MapNumber, IN OUT \fBIO_ACCESS_MAP\fP * AccessMap)"
+
+.SS "BOOLEAN Ke386SetIoAccessMap (IN ULONG MapNumber, IN \fBIO_ACCESS_MAP\fP * AccessMap)"
+
+.SH "Author"
+.PP 
+Generated automatically by Doxygen for DIO from the source code\&.

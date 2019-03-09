@@ -61,7 +61,7 @@ DiopValidatePacketBuffer(
 /**
  *	@brief	Validates the packet buffer.
  *	
- *	This method is reserved for internal use.
+ *	This function is reserved for internal use.
  *
  *	@param	[in] Packet					Address of packet buffer.
  *	@param	[in] InputBufferLength		Length of packet buffer.
@@ -107,7 +107,7 @@ DiopSetIoAccessMap(
 /**
  *	@brief	Sets the I/O access map.
  *	
- *	This method is reserved for internal use.
+ *	This function is reserved for internal use.
  *
  *	@param	[in] PortAccessEntry		Address of port access entry.
  *	@param	[in] AccessMap				Access map to modify.
@@ -158,9 +158,7 @@ DioDenyConventionalPortAccess(
 /**
  *	@brief	Denies the port I/O access for well-known address.
  *	
- *	@param	[in] PortAccessEntry		Address of port access entry.
  *	@param	[in] AccessMap				Access map to modify.
- *	@param	[in] DenyAccess				If this value is non-zero, port access will be denied.
  *	@return								None.
  *	
  */
@@ -174,7 +172,7 @@ DioDenyConventionalPortAccess(
 
 BOOLEAN
 DioSetIoAccessMapByPacket(
-	IN DIO_PACKET_PORTACCESS *PortAccess OPTIONAL, 
+	IN OPTIONAL DIO_PACKET_PORTACCESS *PortAccess, 
 	IN IO_ACCESS_MAP *AccessMap)
 /**
  *	@brief	Enables port I/O access for specified address range.
@@ -336,7 +334,7 @@ DiopCreateProcessNotifyRoutine(
 /**
  *	@brief	Our process notify routine.
  *	
- *	This method is reserved for internal use.
+ *	This function is reserved for internal use.
  *
  *	@param	[in] ParentId				ID of parent process.
  *	@param	[in] ProcessId				ID of target process.

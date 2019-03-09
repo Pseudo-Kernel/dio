@@ -1,0 +1,154 @@
+.TH "CDriverService" 3 "Sun Mar 10 2019" "DIO" \" -*- nroff -*-
+.ad l
+.nh
+.SH NAME
+CDriverService
+.SH SYNOPSIS
+.br
+.PP
+.PP
+\fC#include <DriverService\&.h>\fP
+.SS "Public Member Functions"
+
+.in +1c
+.ti -1c
+.RI "\fBCDriverService\fP (LPWSTR ServiceName, LPWSTR DriverFileName, BOOL AssumeFullPath)"
+.br
+.RI "Class constructor\&. "
+.ti -1c
+.RI "\fB~CDriverService\fP (void)"
+.br
+.RI "Class destructor\&. "
+.ti -1c
+.RI "BOOL \fBInstall\fP (BOOL ForceInstall)"
+.br
+.RI "Installs the driver service\&. "
+.ti -1c
+.RI "BOOL \fBStart\fP ()"
+.br
+.RI "Starts the driver service\&. "
+.ti -1c
+.RI "BOOL \fBStop\fP ()"
+.br
+.RI "Stops the driver service\&. "
+.ti -1c
+.RI "BOOL \fBUninstall\fP (BOOL ForceStop)"
+.br
+.RI "Uninstalls the driver service\&. "
+.in -1c
+.SH "Detailed Description"
+.PP 
+Definition at line 5 of file DriverService\&.h\&.
+.SH "Constructor & Destructor Documentation"
+.PP 
+.SS "CDriverService::CDriverService (LPWSTR ServiceName, LPWSTR DriverFileName, BOOL AssumeFullPath)"
+
+.PP
+Class constructor\&. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIServiceName\fP Service name of the driver\&. Maximum length is 256 including null character\&. 
+.br
+\fIDriverFileName\fP File name of the driver\&. Maximum length is MAX_PATH including null character\&. 
+.br
+\fIAssumeFullPath\fP If this value is non-zero, DriverFileName is treated as full path\&. 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+None\&. 
+.RE
+.PP
+
+.PP
+Definition at line 8 of file DriverService\&.cpp\&.
+.SS "CDriverService::~CDriverService (void)"
+
+.PP
+Class destructor\&. 
+.PP
+\fBReturns:\fP
+.RS 4
+None\&. 
+.RE
+.PP
+
+.PP
+Definition at line 56 of file DriverService\&.cpp\&.
+.SH "Member Function Documentation"
+.PP 
+.SS "BOOL CDriverService::Install (BOOL ForceInstall)"
+
+.PP
+Installs the driver service\&. The type of service start is always SERVICE_DEMAND_START\&.
+.PP
+\fBParameters:\fP
+.RS 4
+\fIForceInstall\fP If this value is non-zero and same service exists,
+.br
+ \fBInstall()\fP will try stop and delete service before installation\&. 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+Non-zero if successful\&. 
+.RE
+.PP
+
+.PP
+Definition at line 257 of file DriverService\&.cpp\&.
+.SS "BOOL CDriverService::Start ()"
+
+.PP
+Starts the driver service\&. 
+.PP
+\fBReturns:\fP
+.RS 4
+Non-zero if successful\&. 
+.RE
+.PP
+
+.PP
+Definition at line 272 of file DriverService\&.cpp\&.
+.SS "BOOL CDriverService::Stop ()"
+
+.PP
+Stops the driver service\&. Make sure that all instances of driver is closed before stop\&.
+.br
+If not, the driver will be never stopped\&.
+.br
+ 
+.PP
+\fBReturns:\fP
+.RS 4
+Non-zero if successful\&. 
+.RE
+.PP
+
+.PP
+Definition at line 283 of file DriverService\&.cpp\&.
+.SS "BOOL CDriverService::Uninstall (BOOL ForceStop)"
+
+.PP
+Uninstalls the driver service\&. 
+.PP
+\fBParameters:\fP
+.RS 4
+\fIForceStop\fP If this value is non-zero, \fBUninstall()\fP will try to stop and
+.br
+ delete service\&. 
+.RE
+.PP
+\fBReturns:\fP
+.RS 4
+Non-zero if successful\&. 
+.RE
+.PP
+
+.PP
+Definition at line 297 of file DriverService\&.cpp\&.
+
+.SH "Author"
+.PP 
+Generated automatically by Doxygen for DIO from the source code\&.
