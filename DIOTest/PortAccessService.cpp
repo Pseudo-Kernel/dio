@@ -2,6 +2,15 @@
 
 
 CPortAccessService::CPortAccessService(LPWSTR DeviceName)
+/**
+ *	@brief	Class constructor.
+ *
+ *	Note that the maximum length of DeviceName is MAX_PATH, including the null-terminator.
+ *	
+ *	@param	[in] DeviceName				Device name that starts with "\\\\.\\"
+ *	@return								None.
+ *	
+ */
 {
 #if _MSC_VER >= 1300
 	wcscpy_s(m_DeviceName, _countof(m_DeviceName), DeviceName);
@@ -11,10 +20,28 @@ CPortAccessService::CPortAccessService(LPWSTR DeviceName)
 }
 
 CPortAccessService::~CPortAccessService(void)
+/**
+ *	@brief	Class destructor.
+ *	
+ *	@return								None.
+ *	
+ */
 {
 }
 
 BOOL CPortAccessService::InternalDeviceControl(HANDLE hDevice, ULONG IoControlCode, PVOID InBuffer, ULONG InBufferLength)
+/**
+ *	@brief	Do IOCTL with device.
+ *
+ *	This method is reserved for internal use.
+ *	
+ *	@param	[in] hDevice				The handle of the device.
+ *	@param	[in] IoControlCode			IOCTL code.
+ *	@param	[in] InBuffer				Input buffer for IOCTL.
+ *	@param	[in] InBufferLength			Input buffer length for IOCTL.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	DWORD BytesReturned = 0;
 	BOOL Result = ::DeviceIoControl(hDevice, IoControlCode, InBuffer, InBufferLength, NULL, 0, &BytesReturned, NULL);
@@ -24,6 +51,17 @@ BOOL CPortAccessService::InternalDeviceControl(HANDLE hDevice, ULONG IoControlCo
 }
 
 DIO_PACKET_PORTACCESS *CPortAccessService::InternalBuildPortAccessPacket(ULONG *PacketLength, ULONG Count, va_list Args)
+/**
+ *	@brief	Builds port access packet for IOCTL.
+ *
+ *	This method is reserved for internal use.
+ *	
+ *	@param	[out] PacketLength			Address of variable that receives the size of the packet.
+ *	@param	[in] Count					Count of address range pairs.
+ *	@param	[in] Args					Argument list which contains address range pairs.
+ *	@return								Non-null if successful.
+ *	
+ */
 {
 	if (Count > DIO_PORTACCESS_ENTRY_MAXIMUM)
 		return NULL;
@@ -44,6 +82,17 @@ DIO_PACKET_PORTACCESS *CPortAccessService::InternalBuildPortAccessPacket(ULONG *
 }
 
 DIO_PACKET_PORTACCESS *CPortAccessService::InternalBuildPortAccessPacket(ULONG *PacketLength, ULONG Count, DIO_PORTACCESS_ENTRY *PortAccess)
+/**
+ *	@brief	Builds port access packet for IOCTL.
+ *
+ *	This method is reserved for internal use.
+ *	
+ *	@param	[out] PacketLength			Address of variable that receives the size of the packet.
+ *	@param	[in] Count					Count of port access entries.
+ *	@param	[in] Args					Address of port access entries.
+ *	@return								Non-null if successful.
+ *	
+ */
 {
 	if (Count > DIO_PORTACCESS_ENTRY_MAXIMUM)
 		return NULL;
@@ -61,37 +110,52 @@ DIO_PACKET_PORTACCESS *CPortAccessService::InternalBuildPortAccessPacket(ULONG *
 }
 
 VOID CPortAccessService::InternalFreePortAccessPacket(DIO_PACKET_PORTACCESS *PortAccessPacket)
+/**
+ *	@brief	Releases the port access packet.
+ *
+ *	This method is reserved for internal use.
+ *	
+ *	@param	[in] PortAccessPacket		Address of port access packet.
+ *	@return								None.
+ *	
+ */
 {
 	delete [] ((BYTE *)PortAccessPacket);
 }
 
-BOOL CPortAccessService::RequestPortAccess(ULONG Count, USHORT StartAddress1, USHORT EndAddress1, ...)
+BOOL CPortAccessService::RequestPortAccess(ULONG Count, ...)
 /**
- *	@brief	Request the enable access for port.
+ *	@brief	Requests the enable access for port.
  *
  *	Note that only the recent port access setting will be applied.\n
  *	That is, previous setting will be deleted when you call RequestPortAccess().\n
  *	Port access range is inclusive.\n
  *	\n
- *	To request access for (one or) multiple ranges, following examples are valid:\n
- *	RequestPortAccess(1, 0x7000, 0x701f); // enable access for 0x7000 - 0x701f\n
- *	RequestPortAccess(2, 0x7000, 0x701f, 0x7030, 0x703f); // enable access for 0x7000 - 0x701f, 0x7030 - 0x703f\n
+ *	To request access for (one or) multiple ranges, see following examples:\n
+ *	\n
+ *	1 address range (0x7000 to 0x701f)\n
+ *	=> RequestPortAccess(1, 0x7000, 0x701f);\n
+ *	2 address ranges (0x7000 to 0x701f), (0x7030 to 0x703f)\n
+ *	=> RequestPortAccess(2, 0x7000, 0x701f, 0x7030, 0x703f);\n
+ *	3 address ranges (0x7000 to 0x701f), (0x7030 to 0x703f), (0x7050 to 0x705f)\n
+ *	=> RequestPortAccess(3, 0x7000, 0x701f, 0x7030, 0x703f, 0x7050, 0x705f);\n
+ *	N address ranges (s1 to d1), (s2 to d2), ..., (sN to dN)\n
+ *	=> RequestPortAccess(N, s1, d1, s2, d2, ..., sN, dN);\n
+ *	\n
  *	
  *	@param	[in] Count					Count of port address range pair.\n
  *										If this value is zero, other parameters will be ignored.
- *	@param	[in] StartAddress1			1st starting address of port.
- *	@param	[in] EndAddress1			1st ending address of port.
- *	@param	[in] ...					Address range pairs.
+ *	@param	[in] ...					Address range pairs (USHORT, USHORT).
  *	@return								Non-zero if successful.
  *	
  */
 {
 	va_list Args;
-	DIO_PACKET_PORTACCESS *Packet;
-	ULONG PacketLength;
-
 	va_start(Args, Count);
-	Packet = InternalBuildPortAccessPacket(&PacketLength, Count, Args);
+
+	ULONG PacketLength;
+	DIO_PACKET_PORTACCESS *Packet = InternalBuildPortAccessPacket(&PacketLength, Count, Args);
+
 	va_end(Args);
 
 	if (!Packet)
@@ -119,7 +183,7 @@ BOOL CPortAccessService::RequestPortAccess(ULONG Count, USHORT StartAddress1, US
 
 BOOL CPortAccessService::RequestPortAccess(ULONG Count, DIO_PORTACCESS_ENTRY *PortAccess)
 /**
- *	@brief	Request the enable access for port.
+ *	@brief	Requests the enable access for port.
  *
  *	Note that only the recent port access setting will be applied.\n
  *	That is, previous setting will be deleted when you call RequestPortAccess().\n
@@ -131,10 +195,8 @@ BOOL CPortAccessService::RequestPortAccess(ULONG Count, DIO_PORTACCESS_ENTRY *Po
  *	
  */
 {
-	DIO_PACKET_PORTACCESS *Packet;
 	ULONG PacketLength;
-
-	Packet = InternalBuildPortAccessPacket(&PacketLength, Count, PortAccess);
+	DIO_PACKET_PORTACCESS *Packet = InternalBuildPortAccessPacket(&PacketLength, Count, PortAccess);
 	if (!Packet)
 		return FALSE;
 
@@ -160,7 +222,7 @@ BOOL CPortAccessService::RequestPortAccess(ULONG Count, DIO_PORTACCESS_ENTRY *Po
 
 BOOL CPortAccessService::RequestPortAccess(USHORT StartAddress, USHORT EndAddress)
 /**
- *	@brief	Request the enable access for port.
+ *	@brief	Requests the enable access for port.
  *
  *	Note that only the recent port access setting will be applied.\n
  *	That is, previous setting will be deleted when you call RequestPortAccess().\n
@@ -181,7 +243,7 @@ BOOL CPortAccessService::RequestPortAccess(USHORT StartAddress, USHORT EndAddres
 
 BOOL CPortAccessService::DisablePortAccess()
 /**
- *	@brief	Request the disable access for whole port address.
+ *	@brief	Requests the disable access for whole port address.
  *
  *	@return								Non-zero if successful.
  *	

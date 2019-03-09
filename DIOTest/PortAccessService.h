@@ -9,7 +9,13 @@ public:
 	CPortAccessService(LPWSTR DeviceName);
 	~CPortAccessService(void);
 
-	BOOL RequestPortAccess(ULONG Count, USHORT StartAddress1, USHORT EndAddress1, ...);
+	//
+	// The prototype (ULONG, USHORT, USHORT, ...) has changed to (ULONG, ...) because of compiler bug.
+	// In following code, 0x7000 and 0x7010 will be ignored because VS2010 compiler forgots to push first 2 USHORTs.
+	// RequestPortAccess(3, 0x7000, 0x700f, 0x7010, 0x701f, 0x7020, 0x702f);
+	//
+	BOOL RequestPortAccess(ULONG Count, ...);
+
 	BOOL RequestPortAccess(ULONG Count, DIO_PORTACCESS_ENTRY *PortAccess);
 	BOOL RequestPortAccess(USHORT StartAddress, USHORT EndAddress);
 	BOOL DisablePortAccess();

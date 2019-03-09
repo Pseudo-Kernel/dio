@@ -7,10 +7,10 @@
 
 CDriverService::CDriverService(LPWSTR ServiceName, LPWSTR DriverFileName, BOOL AssumeFullPath)
 /**
- *	@brief	Constructor of driver service.
+ *	@brief	Class constructor.
  *	
- *	@param	[in] ServiceName			Service name of the driver.
- *	@param	[in] DriverFileName			File name of the driver.
+ *	@param	[in] ServiceName			Service name of the driver. Maximum length is 256 including null character.
+ *	@param	[in] DriverFileName			File name of the driver. Maximum length is MAX_PATH including null character.
  *	@param	[in] AssumeFullPath			If this value is non-zero, DriverFileName is treated as full path.
  *	@return								None.
  *	
@@ -55,7 +55,7 @@ CDriverService::CDriverService(LPWSTR ServiceName, LPWSTR DriverFileName, BOOL A
 
 CDriverService::~CDriverService(void)
 /**
- *	@brief	Destructor of driver service.
+ *	@brief	Class destructor.
  *	
  *	@return	None.
  *	
@@ -69,6 +69,7 @@ BOOL CDriverService::Install(LPWSTR ServiceName, LPWSTR DriverPath, BOOL ForceIn
  *	@brief	Installs the driver service.
  *	
  *	The type of service start is always SERVICE_DEMAND_START.
+ *	This method is reserved for internal use.
  *
  *	@param	[in] ServiceName			Service name of the driver.
  *	@param	[in] DriverPath				Full path of the driver.
@@ -130,6 +131,8 @@ BOOL CDriverService::Start(LPWSTR ServiceName)
 /**
  *	@brief	Starts the driver service.
  *	
+ *	This method is reserved for internal use.
+ *
  *	@param	[in] ServiceName			Service name of the driver.
  *	@return								Non-zero if successful.
  *	
@@ -168,6 +171,7 @@ BOOL CDriverService::Stop(LPWSTR ServiceName)
  *	
  *	Make sure that all instances of driver is closed before stop.\n
  *	If not, the driver will be never stopped.\n
+ *	This method is reserved for internal use.
  *
  *	@param	[in] ServiceName			Service name of the driver.
  *	@return								Non-zero if successful.
@@ -206,6 +210,8 @@ BOOL CDriverService::Uninstall(LPWSTR ServiceName, BOOL ForceStop)
 /**
  *	@brief	Uninstalls the driver service.
  *	
+ *	This method is reserved for internal use.
+ *
  *	@param	[in] ServiceName			Service name of the driver.
  *	@param	[in] ForceStop				If this value is non-zero, Uninstall() will try to stop and\n
  *                                      delete service.

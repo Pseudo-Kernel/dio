@@ -1,7 +1,6 @@
 
 #pragma once
 
-
 //
 // Port access structure for I/O control.
 //
@@ -16,19 +15,35 @@
 
 #define DIO_PORTACCESS_ENTRY_MAXIMUM			256
 
+/**
+ *	@brief	Port access entry structure.
+ *
+ *	Describes port address range.\n
+ */
 typedef struct _DIO_PORTACCESS_ENTRY {
-	USHORT StartAddress;
-	USHORT EndAddress;
+	USHORT StartAddress;	//!< Starting port address.
+	USHORT EndAddress;		//!< Ending port address.
 } DIO_PORTACCESS_ENTRY;
 
 #pragma warning(push)
 #pragma warning(disable: 4200)
+
+/**
+ *	@brief	Port access packet structure.
+ *
+ *	Contains one or multiple port address ranges.\n
+ */
 typedef struct _DIO_PACKET_PORTACCESS {
-	ULONG Count;
+	ULONG Count;			//!< Count of DIO_PORTACCESS_ENTRY.
 	DIO_PORTACCESS_ENTRY Entry[];
 } DIO_PACKET_PORTACCESS;
 #pragma warning(pop)
 
+C_ASSERT(sizeof(DIO_PACKET_PORTACCESS) == sizeof(ULONG));
+
+/**
+ *	@brief	IOCTL packet.
+ */
 typedef union _DIO_PACKET {
 	DIO_PACKET_PORTACCESS PortAccess;
 } DIO_PACKET;

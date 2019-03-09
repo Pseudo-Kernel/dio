@@ -14,6 +14,7 @@
 #define DIO_FREE(_addr)							ExFreePoolWithTag((_addr), 'OIDp')
 
 #define	DIO_TRACE(_fmt, ...)					DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, (_fmt), __VA_ARGS__)
+#define	DIO_FUNC_TRACE(_fmt, ...)				DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, ("%s: " _fmt), __FUNCTION__, __VA_ARGS__)
 
 #define	DIO_IN_DEBUG_BREAKPOINT() {		\
 	if (!(*KdDebuggerNotPresent)) {		\
@@ -57,6 +58,17 @@ DiopValidatePacketBuffer(
 	IN DIO_PACKET *Packet, 
 	IN ULONG InputBufferLength, 
 	IN ULONG IoControlCode)
+/**
+ *	@brief	Validates the packet buffer.
+ *	
+ *	This method is reserved for internal use.
+ *
+ *	@param	[in] Packet					Address of packet buffer.
+ *	@param	[in] InputBufferLength		Length of packet buffer.
+ *	@param	[in] IoControlCode			Related IOCTL code of packet buffer.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	switch (IoControlCode)
 	{
@@ -90,8 +102,19 @@ DiopValidatePacketBuffer(
 VOID
 DiopSetIoAccessMap(
 	IN DIO_PORTACCESS_ENTRY *PortAccessEntry, 
-	IN OUT IO_ACCESS_MAP *AccessMap, 
+	IN IO_ACCESS_MAP *AccessMap, 
 	IN BOOLEAN DenyAccess)
+/**
+ *	@brief	Sets the I/O access map.
+ *	
+ *	This method is reserved for internal use.
+ *
+ *	@param	[in] PortAccessEntry		Address of port access entry.
+ *	@param	[in] AccessMap				Access map to modify.
+ *	@param	[in] DenyAccess				If this value is non-zero, port access will be denied.
+ *	@return								None.
+ *	
+ */
 {
 	ULONG Address = (ULONG)(USHORT)PortAccessEntry->StartAddress;
 	ULONG AddressEnd = (ULONG)(USHORT)PortAccessEntry->EndAddress;
@@ -101,14 +124,14 @@ DiopSetIoAccessMap(
 
 	if (Address <= AddressEnd)
 	{
-		DIO_TRACE("%s: %s port access 0x%04x - 0x%04x\n", 
-			__FUNCTION__, DenyAccess ? "Deny" : "Allow", 
+		DIO_FUNC_TRACE("%s port access 0x%04x - 0x%04x\n", 
+			DenyAccess ? "Deny" : "Allow", 
 			Address, AddressEnd);
 	}
 	else
 	{
-		DIO_TRACE("%s: Port access range 0x%04x - 0x%04x will be ignored\n", 
-			__FUNCTION__, Address, AddressEnd);
+		DIO_FUNC_TRACE("Port access range 0x%04x - 0x%04x will be ignored\n", 
+			Address, AddressEnd);
 	}
 
 	if (DenyAccess)
@@ -131,7 +154,16 @@ DiopSetIoAccessMap(
 
 VOID
 DioDenyConventionalPortAccess(
-	IN OUT IO_ACCESS_MAP *AccessMap)
+	IN IO_ACCESS_MAP *AccessMap)
+/**
+ *	@brief	Denies the port I/O access for well-known address.
+ *	
+ *	@param	[in] PortAccessEntry		Address of port access entry.
+ *	@param	[in] AccessMap				Access map to modify.
+ *	@param	[in] DenyAccess				If this value is non-zero, port access will be denied.
+ *	@return								None.
+ *	
+ */
 {
 #ifdef DIO_DENY_CONVENTIONAL_PORT_ACCESS
 	ULONG i;
@@ -143,7 +175,15 @@ DioDenyConventionalPortAccess(
 BOOLEAN
 DioSetIoAccessMapByPacket(
 	IN DIO_PACKET_PORTACCESS *PortAccess OPTIONAL, 
-	IN OUT IO_ACCESS_MAP *AccessMap)
+	IN IO_ACCESS_MAP *AccessMap)
+/**
+ *	@brief	Enables port I/O access for specified address range.
+ *	
+ *	@param	[in] PortAccess				Address of packet.
+ *	@param	[in] AccessMap				Access map to modify.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	ULONG i;
 
@@ -151,18 +191,23 @@ DioSetIoAccessMapByPacket(
 
 	if (!PortAccess)
 	{
-		DIO_TRACE("%s: Any port access will be denied\n", __FUNCTION__);
+		DIO_FUNC_TRACE("Any port access will be denied\n");
 		return TRUE;
 	}
 
+	DIO_FUNC_TRACE("Entry count = %d\n", PortAccess->Count);
+	
 	if (PortAccess->Count > DIO_PORTACCESS_ENTRY_MAXIMUM)
 	{
-		DIO_TRACE("%s: Maximum entry count exceeded\n", __FUNCTION__);
+		DIO_FUNC_TRACE("Maximum entry count exceeded\n");
 		return FALSE;
 	}
-	
+
 	for (i = 0; i < PortAccess->Count; i++)
+	{
+		DIO_FUNC_TRACE("[%d] 0x%x - 0x%x\n", i, PortAccess->Entry[i].StartAddress, PortAccess->Entry[i].EndAddress);
 		DiopSetIoAccessMap(&PortAccess->Entry[i], AccessMap, FALSE);
+	}
 
 	// Deny port access for conventional address.
 	DioDenyConventionalPortAccess(AccessMap);
@@ -173,6 +218,12 @@ DioSetIoAccessMapByPacket(
 BOOLEAN
 DioRegisterSelf(
 	VOID)
+/**
+ *	@brief	Registers caller process to permit port I/O access.
+ *	
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	PEPROCESS CurrentProcess = PsGetCurrentProcess();
 	PEPROCESS RegisteredProcess = NULL;
@@ -181,14 +232,14 @@ DioRegisterSelf(
 
 	if (RegisteredProcess != NULL && RegisteredProcess != CurrentProcess)
 	{
-		DIO_TRACE("%s: Failed to register %d because it is already registered\n", 
-			__FUNCTION__, PsGetProcessId(CurrentProcess));
+		DIO_FUNC_TRACE("Failed to register %d because it is already registered\n", 
+			PsGetProcessId(CurrentProcess));
 		return FALSE;
 	}
 
 	ObfReferenceObject(CurrentProcess);
 
-	DIO_TRACE("%s: Registered %d\n", __FUNCTION__, PsGetProcessId(CurrentProcess));
+	DIO_FUNC_TRACE("Registered %d\n", PsGetProcessId(CurrentProcess));
 
 	return TRUE;
 }
@@ -196,6 +247,13 @@ DioRegisterSelf(
 BOOLEAN
 DioUnregister(
 	IN BOOLEAN DisableIoAccess)
+/**
+ *	@brief	Unregisters caller process to permit port I/O access.
+ *	
+ *	@param	[in] DisableIoAccess		If this value is non-zero, port I/O access will be disabled.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	PEPROCESS RegisteredProcess = NULL;
 	PEPROCESS CurrentProcess = PsGetCurrentProcess();
@@ -203,14 +261,14 @@ DioUnregister(
 	RegisteredProcess = (PEPROCESS)_InterlockedCompareExchange((LONG *)&DiopRegisteredProcess, 0, (LONG)CurrentProcess);
 	if (!RegisteredProcess)
 	{
-		DIO_TRACE("%s: Failed to unregister because no process is registered\n", __FUNCTION__);
+		DIO_FUNC_TRACE("Failed to unregister because no process is registered\n");
 		return FALSE;
 	}
 
 	if (DisableIoAccess)
 		Ke386IoSetAccessProcess(RegisteredProcess, 0);
 
-	DIO_TRACE("%s: Unregistered %d\n", __FUNCTION__, PsGetProcessId(RegisteredProcess));
+	DIO_FUNC_TRACE("Unregistered %d\n", PsGetProcessId(RegisteredProcess));
 
 	ObfDereferenceObject(RegisteredProcess);
 	return TRUE;
@@ -219,12 +277,19 @@ DioUnregister(
 BOOLEAN
 DioForceUnregister(
 	IN HANDLE UnregisterProcessId)
+/**
+ *	@brief	Forcibly unregisters specified process.
+ *	
+ *	@param	[in] UnregisterProcessId	Process id to unregister.
+ *	@return								Non-zero if successful.
+ *	
+ */
 {
 	KIRQL Irql;
 	BOOLEAN Unregistered;
 	PEPROCESS RegisteredProcess;
 
-//	DIO_TRACE("%s: Trying to unregister %d\n", __FUNCTION__, UnregisterProcessId);
+//	DIO_FUNC_TRACE("Trying to unregister %d\n", UnregisterProcessId);
 
 	// Acquire the lock so following code is not executed simultaneously.
 	KeAcquireSpinLock(&DiopForceUnregisterLock, &Irql);
@@ -253,7 +318,7 @@ DioForceUnregister(
 	KeReleaseSpinLock(&DiopForceUnregisterLock, Irql);
 
 	if (Unregistered)
-		DIO_TRACE("%s: Unregistered %d\n", __FUNCTION__, UnregisterProcessId);
+		DIO_FUNC_TRACE("Unregistered %d\n", UnregisterProcessId);
 
 	return Unregistered;
 }
@@ -268,6 +333,17 @@ DiopCreateProcessNotifyRoutine(
 	IN HANDLE ParentId, 
 	IN HANDLE ProcessId, 
 	IN BOOLEAN Create)
+/**
+ *	@brief	Our process notify routine.
+ *	
+ *	This method is reserved for internal use.
+ *
+ *	@param	[in] ParentId				ID of parent process.
+ *	@param	[in] ProcessId				ID of target process.
+ *	@param	[in] Create					Zero for process deletion. Other values for process creation.
+ *	@return								None.
+ *	
+ */
 {
 	UNREFERENCED_PARAMETER(ParentId);
 
@@ -286,6 +362,14 @@ NTSTATUS
 DioDispatchNotSupported(
 	IN PDEVICE_OBJECT DeviceObject, 
 	IN PIRP Irp)
+/**
+ *	@brief	Default dispatch routine for not supported functions.
+ *	
+ *	@param	[in] DeviceObject			Device object.
+ *	@param	[in] Irp					Irp object.
+ *	@return								STATUS_NOT_SUPPORTED always.
+ *	
+ */
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
 	UNREFERENCED_PARAMETER(Irp);
@@ -298,6 +382,14 @@ NTSTATUS
 DioDispatchCreate(
 	IN PDEVICE_OBJECT DeviceObject, 
 	IN PIRP Irp)
+/**
+ *	@brief	Dispatch routine for IRP_MJ_CREATE.
+ *	
+ *	@param	[in] DeviceObject			Device object.
+ *	@param	[in] Irp					Irp object.
+ *	@return								STATUS_SUCCESS always.
+ *	
+ */
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
 
@@ -313,6 +405,14 @@ NTSTATUS
 DioDispatchClose(
 	IN PDEVICE_OBJECT DeviceObject, 
 	IN PIRP Irp)
+/**
+ *	@brief	Dispatch routine for IRP_MJ_CLOSE.
+ *	
+ *	@param	[in] DeviceObject			Device object.
+ *	@param	[in] Irp					Irp object.
+ *	@return								STATUS_SUCCESS always.
+ *	
+ */
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
 
@@ -328,6 +428,14 @@ NTSTATUS
 DioDispatchIoControl(
 	IN PDEVICE_OBJECT DeviceObject, 
 	IN PIRP Irp)
+/**
+ *	@brief	Dispatch routine for IRP_MJ_DEVICE_CONTROL.
+ *	
+ *	@param	[in] DeviceObject			Device object.
+ *	@param	[in] Irp					Irp object.
+ *	@return								STATUS_SUCCESS always.
+ *	
+ */
 {
 	PIO_STACK_LOCATION IoStackLocation;
 	ULONG IoControlCode;
@@ -347,7 +455,7 @@ DioDispatchIoControl(
 	IoControlCode = IoStackLocation->Parameters.DeviceIoControl.IoControlCode;
 	InputBufferLength = IoStackLocation->Parameters.DeviceIoControl.InputBufferLength;
 
-	DIO_TRACE("%s: IOCTL from process %d\n", __FUNCTION__, PsGetProcessId(CurrentProcess));
+	DIO_FUNC_TRACE("IOCTL from process %d\n", PsGetProcessId(CurrentProcess));
 
 	do
 	{
@@ -369,7 +477,7 @@ DioDispatchIoControl(
 		Packet = (DIO_PACKET *)Irp->AssociatedIrp.SystemBuffer;
 		if (!DiopValidatePacketBuffer(Packet, InputBufferLength, IoControlCode))
 		{
-			DIO_TRACE("%s: Buffer validation failed\n", __FUNCTION__);
+			DIO_FUNC_TRACE("Buffer validation failed\n");
 			Status = STATUS_INVALID_PARAMETER;
 			break;
 		}
@@ -384,7 +492,7 @@ DioDispatchIoControl(
 		case DIO_IOCTL_SET_PORTACCESS:
 			if (!DioRegisterSelf())
 			{
-				DIO_TRACE("%s: Process 0x%p is already registered\n", __FUNCTION__, DiopRegisteredProcess);
+				DIO_FUNC_TRACE("Process 0x%p is already registered\n", DiopRegisteredProcess);
 				Status = STATUS_ACCESS_DENIED;
 				break;
 			}
@@ -392,13 +500,13 @@ DioDispatchIoControl(
 			// Create the I/O access map from packet.
 			if (!DioSetIoAccessMapByPacket(&Packet->PortAccess, DiopIoAccessMap))
 			{
-				DIO_TRACE("%s: Failed to prepare access map\n", __FUNCTION__);
+				DIO_FUNC_TRACE("Failed to prepare access map\n");
 				Status = STATUS_INVALID_PARAMETER;
 				break;
 			}
 
-			DIO_TRACE("%s: Setting port permission for process 0x%p (%d)\n", 
-				__FUNCTION__, CurrentProcess, PsGetProcessId(CurrentProcess));
+			DIO_FUNC_TRACE("Setting port permission for process 0x%p (%d)\n", 
+				CurrentProcess, PsGetProcessId(CurrentProcess));
 
 			Ke386IoSetAccessProcess(CurrentProcess, 1);
 			Ke386SetIoAccessMap(1, DiopIoAccessMap);
@@ -407,13 +515,13 @@ DioDispatchIoControl(
 		case DIO_IOCTL_RESET_PORTACCESS:
 			if (!DioSetIoAccessMapByPacket(NULL, DiopIoAccessMap))
 			{
-				DIO_TRACE("%s: Failed to prepare access map\n", __FUNCTION__);
+				DIO_FUNC_TRACE("Failed to prepare access map\n");
 				Status = STATUS_INVALID_PARAMETER;
 				break;
 			}
 
-			DIO_TRACE("%s: Resetting port permission to initial state for process 0x%p (%d)\n", 
-				__FUNCTION__, CurrentProcess, PsGetProcessId(CurrentProcess));
+			DIO_FUNC_TRACE("Resetting port permission to initial state for process 0x%p (%d)\n", 
+				CurrentProcess, PsGetProcessId(CurrentProcess));
 
 			Ke386IoSetAccessProcess(CurrentProcess, 0);
 			break;
@@ -440,9 +548,16 @@ DioDispatchIoControl(
 VOID
 DioDriverUnload(
 	IN PDRIVER_OBJECT DriverObject)
+/**
+ *	@brief	Dispatch routine for DriverUnload.
+ *	
+ *	@param	[in] DriverObject			Driver object.
+ *	@return								None.
+ *	
+ */
 {
 #ifdef DIO_SUPPORT_UNLOAD
-	DIO_TRACE("%s: Shutdowning...\n", __FUNCTION__);
+	DIO_FUNC_TRACE("Shutdowning...\n");
 
 	IoDeleteSymbolicLink(&DiopDosDeviceName);
 	IoDeleteDevice(DiopDeviceObject);
@@ -453,6 +568,9 @@ DioDriverUnload(
 
 	// FIXME : Is it safe to free the map?
 	DIO_FREE(DiopIoAccessMap);
+
+	DIO_FUNC_TRACE("Byebye!\n\n");
+
 #else
 	__debugbreak();
 #endif
@@ -467,6 +585,14 @@ NTSTATUS
 DriverEntry(
 	IN PDRIVER_OBJECT DriverObject, 
 	IN PUNICODE_STRING RegistryPath)
+/**
+ *	@brief	Driver start entry.
+ *	
+ *	@param	[in] DriverObject			Driver object.
+ *	@param	[in] RegistryPath			Registry path for driver services.
+ *	@return								STATUS_SUCCESS if successful.
+ *	
+ */
 {
 	NTSTATUS Status;
 	IO_ACCESS_MAP *AccessMap;
@@ -475,10 +601,9 @@ DriverEntry(
 
 	UNREFERENCED_PARAMETER(RegistryPath);
 
-
-	DIO_TRACE(" ********** DIO board I/O helper ********** \n");
-	DIO_TRACE("Last built " __DATE__ " " __TIME__ "\n");
-	DIO_TRACE("%s: Initializing...\n", __FUNCTION__);
+	DIO_TRACE(" ********** DIO board I/O helper driver ********** \n");
+	DIO_TRACE("Last built " __DATE__ " " __TIME__ "\n\n");
+	DIO_FUNC_TRACE("Initializing...\n");
 
 	RtlInitUnicodeString(&DiopDeviceName, L"\\Device\\Dioport");
 	RtlInitUnicodeString(&DiopDosDeviceName, L"\\DosDevices\\Dioport");
@@ -486,14 +611,14 @@ DriverEntry(
 	AccessMap = (IO_ACCESS_MAP *)DIO_ALLOC(sizeof(*AccessMap));
 	if (!AccessMap)
 	{
-		DIO_TRACE("ExAllocatePoolWithTag failed\n");
+		DIO_FUNC_TRACE("ExAllocatePoolWithTag failed\n");
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
 	Status = IoCreateDevice(DriverObject, 0, &DiopDeviceName, FILE_DEVICE_UNKNOWN, 0, FALSE, &DeviceObject);
 	if (!NT_SUCCESS(Status))
 	{
-		DIO_TRACE("IoCreateDevice failed\n");
+		DIO_FUNC_TRACE("IoCreateDevice failed\n");
 		DIO_FREE(AccessMap);
 
 		return Status;
@@ -505,7 +630,7 @@ DriverEntry(
 		IoDeleteDevice(DeviceObject);
 		DIO_FREE(AccessMap);
 		
-		DIO_TRACE("IoCreateSymbolicLink failed\n");
+		DIO_FUNC_TRACE("IoCreateSymbolicLink failed\n");
 		return Status;
 	}
 
@@ -527,9 +652,9 @@ DriverEntry(
 
 	Status = PsSetCreateProcessNotifyRoutine(DiopCreateProcessNotifyRoutine, FALSE);
 	if (!NT_SUCCESS(Status))
-		DIO_TRACE("%s: WARNING - Failed to register notify routine (0x%08lx)\n", __FUNCTION__, Status);
+		DIO_FUNC_TRACE("WARNING - Failed to register notify routine (0x%08lx)\n", Status);
 
-	DIO_TRACE("%s: Initialization done.\n", __FUNCTION__);
+	DIO_FUNC_TRACE("Initialization done.\n");
 
 
 	//
