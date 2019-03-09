@@ -41,6 +41,11 @@ KSPIN_LOCK DiopForceUnregisterLock;
 volatile PEPROCESS DiopRegisteredProcess = NULL;
 
 #ifdef DIO_DENY_CONVENTIONAL_PORT_ACCESS
+/**
+ *	@brief	Predefined range of well-known port address.
+ *
+ *	Since the DIO board address starts at 0x7000, we only allow maximum 1024 channels here.
+ */
 DIO_PORTACCESS_ENTRY DiopConventionalPortAccessListForDeny[] = {
 	{ 0x0000, 0x6fff }, /* 0x0000 ~ 0x6fff */
 	/* Do not deny DIO board address 0x7000 ~ 0x7000 + 0x10 * BoardCount,
