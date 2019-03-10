@@ -251,7 +251,7 @@ BOOLEAN
 DioUnregister(
 	IN BOOLEAN DisableIoAccess)
 /**
- *	@brief	Unregisters caller process to permit port I/O access.
+ *	@brief	Unregisters caller process.
  *	
  *	@param	[in] DisableIoAccess		If this value is non-zero, port I/O access will be disabled.
  *	@return								Non-zero if successful.
