@@ -1,9 +1,14 @@
 
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT			0x500
+#endif
+
 #include "DriverService.h"
 #include <Shlwapi.h>
 
 #pragma comment(lib, "shlwapi.lib")
 
+#define	_countof(_x)			(sizeof(_x)/sizeof((_x)[0]))
 
 CDriverService::CDriverService(LPWSTR ServiceName, LPWSTR DriverFileName, BOOL AssumeFullPath)
 /**
