@@ -1,0 +1,61 @@
+;
+; DIOPort.inf
+;
+; Installation file for DIOPort device.
+;
+
+[Version]
+Signature = "$Windows NT$"
+Provider = %DIOPort.INFProvider%
+ClassGUID = {4d36e97d-e325-11ce-bfc1-08002be10318}
+Class = System
+DriverVer = 04/13/2019,1.0.0.0
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+;
+; Driver information
+;
+
+[Manufacturer]
+%DIOPort.Manufacturer% = DIOPort.Device
+
+[DIOPort.Device]
+%DIOPort.DeviceDesc% = DIOPort,
+
+;
+; Installation section
+;
+
+[DIOPort]
+
+[DIOPort.Services]
+AddService = DIOPort,0x00000002,DIOPort.ServiceInstall
+
+[DIOPort.ServiceInstall]
+; SERVICE_SYSTEM_START = 1, SERVICE_DEMAND_START = 3
+ServiceType    = 1                  ; SERVICE_KERNEL_DRIVER
+StartType      = 1                  ; SERVICE_SYSTEM_START
+ErrorControl   = 0                  ; SERVICE_ERROR_IGNORE
+ServiceBinary  = %12%\DIOPort.sys
+
+;
+; Disk
+;
+
+[SourceDisksNames.x86]
+1 = %DIOPort.DiskId1%,,,""
+
+[SourceDisksFiles]
+DIOPort.sys = 1,,        ; File for disk #1
+
+;
+; Strings
+;
+
+[Strings]
+DIOPort.INFProvider = "INF_Provider_Name"
+DIOPort.Manufacturer = "Manufacturer_Name"
+DIOPort.DeviceDesc = "Direct I/O Helper Driver"
+DIOPort.DiskId1 = " Installation Disk #1"
