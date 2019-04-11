@@ -47,7 +47,7 @@ AddService = DIOPort,0x00000002,DIOPort.ServiceInstall
 [DIOPort.ServiceInstall]
 ; SERVICE_SYSTEM_START = 1, SERVICE_DEMAND_START = 3
 ServiceType    = 1                  ; SERVICE_KERNEL_DRIVER
-StartType      = 1                  ; SERVICE_SYSTEM_START
+StartType      = 3                  ; SERVICE_DEMAND_START
 ErrorControl   = 0                  ; SERVICE_ERROR_IGNORE
 ServiceBinary  = %12%\DIOPort.sys
 
