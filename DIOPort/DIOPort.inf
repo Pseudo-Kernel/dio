@@ -7,9 +7,19 @@
 [Version]
 Signature = "$Windows NT$"
 Provider = %DIOPort.INFProvider%
-ClassGUID = {4d36e97d-e325-11ce-bfc1-08002be10318}
-Class = System
-DriverVer = 04/13/2019,1.0.0.0
+ClassGUID = {75BEC7D6-7F4E-4DAE-9A2B-B4D09B839B18}
+Class = PortIOService
+DriverVer = 04/04/2019,1.0.0.0
+
+[ClassInstall]
+AddReg = Class.AddReg
+
+[ClassInstall32.NT]
+AddReg = Class.AddReg
+
+[Class.AddReg]
+HKR,,,,%DIOPort.ClassDesc%
+HKR,,Icon,,"-5"
 
 [DestinationDirs]
 DefaultDestDir = 12
@@ -19,16 +29,17 @@ DefaultDestDir = 12
 ;
 
 [Manufacturer]
-%DIOPort.Manufacturer% = DIOPort.Device
+%DIOPort.Manufacturer% = DIOPort.Models
 
-[DIOPort.Device]
-%DIOPort.DeviceDesc% = DIOPort,
+[DIOPort.Models]
+%DIOPort.DeviceDesc% = DIOPort,ROOT\DIOPort
 
 ;
 ; Installation section
 ;
 
 [DIOPort]
+CopyFiles = DIOPort.CopyFiles
 
 [DIOPort.Services]
 AddService = DIOPort,0x00000002,DIOPort.ServiceInstall
@@ -40,9 +51,13 @@ StartType      = 1                  ; SERVICE_SYSTEM_START
 ErrorControl   = 0                  ; SERVICE_ERROR_IGNORE
 ServiceBinary  = %12%\DIOPort.sys
 
+
 ;
 ; Disk
 ;
+
+[DIOPort.CopyFiles]
+DIOPort.sys,,,0x00004000
 
 [SourceDisksNames.x86]
 1 = %DIOPort.DiskId1%,,,""
@@ -57,5 +72,6 @@ DIOPort.sys = 1,,        ; File for disk #1
 [Strings]
 DIOPort.INFProvider = "INF_Provider_Name"
 DIOPort.Manufacturer = "Manufacturer_Name"
-DIOPort.DeviceDesc = "Direct I/O Helper Driver"
+DIOPort.ClassDesc = "Port I/O Service"
+DIOPort.DeviceDesc = "Direct Port I/O Helper"
 DIOPort.DiskId1 = " Installation Disk #1"
