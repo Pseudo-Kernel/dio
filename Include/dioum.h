@@ -1,0 +1,53 @@
+
+#pragma once
+
+typedef struct _DIOUM_DRIVER_CONTEXT		DIOUM_DRIVER_CONTEXT;
+
+typedef struct _DIOUM_PORT_RANGE {
+	USHORT StartAddress;
+	USHORT EndAddress;
+} DIOUM_PORT_RANGE;
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+DIOUM_DRIVER_CONTEXT *
+APIENTRY
+DioInitialize(
+	VOID);
+
+BOOL
+APIENTRY
+DioShutdown(
+	IN DIOUM_DRIVER_CONTEXT *Context);
+
+BOOL
+APIENTRY
+DioRegisterPortAddressRange(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	IN ULONG AddressRangeCount, 
+	IN DIOUM_PORT_RANGE *AddressRanges);
+
+BOOL
+APIENTRY
+DioReadPortMultiple(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	IN PUCHAR Buffer, 
+	IN ULONG BufferLength, 
+	OPTIONAL OUT ULONG *ReturnedDataLength);
+
+BOOL
+APIENTRY
+DioWritePortMultiple(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	IN PUCHAR Buffer, 
+	IN ULONG BufferLength, 
+	OPTIONAL OUT ULONG *TransferredDataLength);
+
+
+#ifdef __cplusplus
+}
+#endif
+

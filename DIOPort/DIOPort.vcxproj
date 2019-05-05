@@ -5,9 +5,17 @@
       <Configuration>Debug</Configuration>
       <Platform>Win32</Platform>
     </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Release|Win32">
       <Configuration>Release</Configuration>
       <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
@@ -19,7 +27,15 @@
     <ConfigurationType>Makefile</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Makefile</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Makefile</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Makefile</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
   </PropertyGroup>
@@ -29,7 +45,13 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
@@ -59,6 +81,36 @@ copy "$(ProjectDir)objchk_win7_x86\i386\$(TargetName).sys" "$(OutDir)$(TargetNam
     <NMakeForcedIncludes>
     </NMakeForcedIncludes>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <NMakeBuildCommandLine>del "$(OutDir)$(TargetName).sys"
+if "%WIN7BASE%"=="" (
+    set WIN7BASE=C:\WinDDK\7600.16385.1
+)
+call ddkbuild -WIN7A64 checked .
+copy "$(ProjectDir)objchk_win7_amd64\amd64\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
+
+makecert -r -pe -ss KMDTestCertStore -n "CN=test.com(Test)" "$(OutDir)\testcert.cer"
+signtool sign /a /v /s KMDTestCertStore /n test.com(Test) /t http://timestamp.verisign.com/scripts/timestamp.dll "$(OutDir)$(TargetName).sys"
+</NMakeBuildCommandLine>
+    <NMakeOutput>DIOPort.sys</NMakeOutput>
+    <NMakeReBuildCommandLine>del "$(OutDir)$(TargetName).sys"
+if "%WIN7BASE%"=="" (
+    set WIN7BASE=C:\WinDDK\7600.16385.1
+)
+call ddkbuild -WIN7A64 checked . -cZ
+copy "$(ProjectDir)objchk_win7_amd64\amd64\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
+
+makecert -r -pe -ss KMDTestCertStore -n "CN=test.com(Test)" "$(OutDir)\testcert.cer"
+signtool sign /a /v /s KMDTestCertStore /n test.com(Test) /t http://timestamp.verisign.com/scripts/timestamp.dll "$(OutDir)$(TargetName).sys"
+</NMakeReBuildCommandLine>
+    <NMakePreprocessorDefinitions>WIN32;_X64_;_AMD64_;_M_AMD64;NTDDI_VERSION=NTDDI_WINXP;_DEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
+    <SourcePath>C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt;C:\WinDDK\7600.16385.1\inc\ddk</SourcePath>
+    <ReferencePath>C:\WinDDK\7600.16385.1\lib\win7\i386</ReferencePath>
+    <LibraryPath>C:\WinDDK\7600.16385.1\lib\win7\i386</LibraryPath>
+    <NMakeIncludeSearchPath>C:\WinDDK\7600.16385.1\inc;C:\WinDDK\7600.16385.1\inc\ddk;C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt</NMakeIncludeSearchPath>
+    <AdditionalOptions />
+    <NMakeForcedIncludes />
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <NMakeBuildCommandLine>del "$(OutDir)$(TargetName).sys"
 if "%WIN7BASE%"=="" (
@@ -76,6 +128,34 @@ call ddkbuild -WIN7 free . -cZ
 copy "$(ProjectDir)objfre_win7_x86\i386\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
 </NMakeReBuildCommandLine>
     <NMakePreprocessorDefinitions>WIN32;_X86_;NTDDI_VERSION=NTDDI_WINXP;NDEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
+    <SourcePath>C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt;C:\WinDDK\7600.16385.1\inc\ddk</SourcePath>
+    <ReferencePath>C:\WinDDK\7600.16385.1\lib\win7\i386</ReferencePath>
+    <NMakeIncludeSearchPath>C:\WinDDK\7600.16385.1\inc;C:\WinDDK\7600.16385.1\inc\ddk;C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt</NMakeIncludeSearchPath>
+    <LibraryPath>C:\WinDDK\7600.16385.1\lib\win7\i386</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <NMakeBuildCommandLine>del "$(OutDir)$(TargetName).sys"
+if "%WIN7BASE%"=="" (
+    set WIN7BASE=C:\WinDDK\7600.16385.1
+)
+call ddkbuild -WIN7A64 free .
+copy "$(ProjectDir)objfre_win7_amd64\amd64\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
+
+makecert -r -pe -ss KMDTestCertStore -n "CN=test.com(Test)" "$(OutDir)\testcert.cer"
+signtool sign /a /v /s KMDTestCertStore /n test.com(Test) /t http://timestamp.verisign.com/scripts/timestamp.dll "$(OutDir)$(TargetName).sys"
+</NMakeBuildCommandLine>
+    <NMakeOutput>DIOPort.sys</NMakeOutput>
+    <NMakeReBuildCommandLine>del "$(OutDir)$(TargetName).sys"
+if "%WIN7BASE%"=="" (
+    set WIN7BASE=C:\WinDDK\7600.16385.1
+)
+call ddkbuild -WIN7A64 free . -cZ
+copy "$(ProjectDir)objfre_win7_amd64\amd64\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
+
+makecert -r -pe -ss KMDTestCertStore -n "CN=test.com(Test)" "$(OutDir)\testcert.cer"
+signtool sign /a /v /s KMDTestCertStore /n test.com(Test) /t http://timestamp.verisign.com/scripts/timestamp.dll "$(OutDir)$(TargetName).sys"
+</NMakeReBuildCommandLine>
+    <NMakePreprocessorDefinitions>WIN32;_X64_;_AMD64_;_M_AMD64;NTDDI_VERSION=NTDDI_WINXP;NDEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <SourcePath>C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt;C:\WinDDK\7600.16385.1\inc\ddk</SourcePath>
     <ReferencePath>C:\WinDDK\7600.16385.1\lib\win7\i386</ReferencePath>
     <NMakeIncludeSearchPath>C:\WinDDK\7600.16385.1\inc;C:\WinDDK\7600.16385.1\inc\ddk;C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt</NMakeIncludeSearchPath>

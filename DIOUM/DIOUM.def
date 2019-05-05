@@ -1,0 +1,9 @@
+LIBRARY DIOUM
+
+EXPORTS
+
+DioInitialize
+DioShutdown
+DioRegisterPortAddressRange
+DioReadPortMultiple
+DioWritePortMultiple

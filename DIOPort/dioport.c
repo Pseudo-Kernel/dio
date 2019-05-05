@@ -1,6 +1,6 @@
 
 #include <ntddk.h>
-#include "iomap.h"
+//#include <intrin.h>
 #include "../Include/dioctl.h"
 
 #define	DIO_DENY_CONVENTIONAL_PORT_ACCESS
@@ -16,6 +16,11 @@
 #define	DIO_TRACE(_fmt, ...)					DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, (_fmt), __VA_ARGS__)
 #define	DIO_FUNC_TRACE(_fmt, ...)				DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, ("%s: " _fmt), __FUNCTION__, __VA_ARGS__)
 
+#define	DIO_ASSERT(_expr)	\
+	if (!(_expr)) {			\
+		__debugbreak();		\
+	}
+
 #define	DIO_IN_DEBUG_BREAKPOINT() {		\
 	if (!(*KdDebuggerNotPresent)) {		\
 		__debugbreak();					\
@@ -23,7 +28,6 @@
 }
 
 
-C_ASSERT( sizeof(PEPROCESS) == 4 );
 
 //
 // Global variables.
@@ -35,7 +39,7 @@ PDEVICE_OBJECT DiopDeviceObject = NULL;
 UNICODE_STRING DiopDeviceName;
 UNICODE_STRING DiopDosDeviceName;
 
-IO_ACCESS_MAP *DiopIoAccessMap = NULL;
+KSPIN_LOCK DiopPortReadWriteLock;
 
 KSPIN_LOCK DiopForceUnregisterLock;
 volatile PEPROCESS DiopRegisteredProcess = NULL;
@@ -46,7 +50,7 @@ volatile PEPROCESS DiopRegisteredProcess = NULL;
  *
  *	Since the DIO board address starts at 0x7000, we only allow maximum 1024 channels here.
  */
-DIO_PORTACCESS_ENTRY DiopConventionalPortAccessListForDeny[] = {
+DIO_PORT_RANGE DiopConventionalPortAccessListForDeny[] = {
 	{ 0x0000, 0x6fff }, /* 0x0000 ~ 0x6fff */
 	/* Do not deny DIO board address 0x7000 ~ 0x7000 + 0x10 * BoardCount,
 	   where the BoardCount = 8 (total 1024 channels) */
@@ -59,9 +63,42 @@ DIO_PORTACCESS_ENTRY DiopConventionalPortAccessListForDeny[] = {
 //
 
 BOOLEAN
+DioTestPortRange(
+	IN USHORT StartAddress, 
+	IN USHORT EndAddress)
+/**
+ *	@brief	Tests the address range is accessible or not.
+ *	
+ *	@param	[in] StartAddress			Starting port address.
+ *	@param	[in] EndAddress				Ending port address.
+ *	@return								Returns FALSE if non-accessible, TRUE otherwise.
+ *	
+ */
+{
+#ifdef DIO_DENY_CONVENTIONAL_PORT_ACCESS
+	ULONG i;
+
+	if (StartAddress > EndAddress)
+		return FALSE;
+
+	for (i = 0; i < ARRAYSIZE(DiopConventionalPortAccessListForDeny); i++)
+	{
+		DIO_PORT_RANGE *AddressRange = DiopConventionalPortAccessListForDeny + i;
+
+		if ((StartAddress <= AddressRange->StartAddress && AddressRange->StartAddress <= EndAddress) || 
+			(StartAddress <= AddressRange->EndAddress && AddressRange->EndAddress <= EndAddress))
+			return FALSE;
+	}
+#endif
+
+	return TRUE;
+}
+
+BOOLEAN
 DiopValidatePacketBuffer(
 	IN DIO_PACKET *Packet, 
 	IN ULONG InputBufferLength, 
+	IN ULONG OutputBufferLength, 
 	IN ULONG IoControlCode)
 /**
  *	@brief	Validates the packet buffer.
@@ -69,32 +106,69 @@ DiopValidatePacketBuffer(
  *	This function is reserved for internal use.
  *
  *	@param	[in] Packet					Address of packet buffer.
- *	@param	[in] InputBufferLength		Length of packet buffer.
+ *	@param	[in] InputBufferLength		Length of input buffer which points the packet structure.
+ *	@param	[in] OutputBufferLength		Length of output buffer.
  *	@param	[in] IoControlCode			Related IOCTL code of packet buffer.
  *	@return								Non-zero if successful.
  *	
  */
 {
+	ULONG i;
+
 	switch (IoControlCode)
 	{
-	case DIO_IOCTL_SET_PORTACCESS:
+	case DIO_IOFN_READ_PORT:
+	case DIO_IOFN_WRITE_PORT:
 		{
-			ULONG Count;
+			ULONG RangeCount = 0;
+			ULONG DataLength = 0;
+			ULONG RequiredInputLength = 0;
+			ULONG RequiredOutputLength = 0;
 
-			if (InputBufferLength < sizeof(Packet->PortAccess))
+			RequiredInputLength = sizeof(Packet->PortIo);
+			if (InputBufferLength < RequiredInputLength)
 				return FALSE;
 
-			Count = Packet->PortAccess.Count;
-			if (Count > DIO_PORTACCESS_ENTRY_MAXIMUM)
+			RangeCount = Packet->PortIo.RangeCount;
+			if (RangeCount > DIO_MAXIMUM_PORT_IO_REQUEST)
 				return FALSE;
 
-			if (Count * sizeof(DIO_PORTACCESS_ENTRY) > InputBufferLength)
+			RequiredInputLength += RangeCount * sizeof(DIO_PORT_RANGE);
+			if (InputBufferLength < RequiredInputLength)
+				return FALSE;
+
+			//
+			// Calculate the data length to transfer.
+			//
+
+			for (i = 0; i < Packet->PortIo.RangeCount; i++)
+			{
+				DIO_PORT_RANGE *AddressRange = Packet->PortIo.AddressRange + i;
+
+				if (DioTestPortRange(AddressRange->StartAddress, AddressRange->EndAddress))
+					DataLength += AddressRange->EndAddress - AddressRange->StartAddress + 1;
+			}
+
+			// Data length cannot be equal or bigger then 64K.
+			DIO_ASSERT(DataLength < 0x10000);
+
+
+			// Port read  : InputBuffer  [RangeCount] [Ranges]
+			//              OutputBuffer [RangeCount] [Ranges] [Data]
+			// Port write : InputBuffer  [RangeCount] [Ranges] [Data]
+			//              OutputBuffer [RangeCount] [Ranges]
+
+			RequiredOutputLength = RequiredInputLength;
+
+			if (IoControlCode == DIO_IOFN_READ_PORT)
+				RequiredOutputLength += DataLength;
+			else
+				RequiredInputLength += DataLength;
+
+			if (InputBufferLength < RequiredInputLength || 
+				OutputBufferLength < RequiredOutputLength)
 				return FALSE;
 		}
-		break;
-
-	case DIO_IOCTL_RESET_PORTACCESS:
-		// Do nothing
 		break;
 
 	default:
@@ -104,119 +178,99 @@ DiopValidatePacketBuffer(
 	return TRUE;
 }
 
-VOID
-DiopSetIoAccessMap(
-	IN DIO_PORTACCESS_ENTRY *PortAccessEntry, 
-	IN IO_ACCESS_MAP *AccessMap, 
-	IN BOOLEAN DenyAccess)
-/**
- *	@brief	Sets the I/O access map.
- *	
- *	This function is reserved for internal use.
- *
- *	@param	[in] PortAccessEntry		Address of port access entry.
- *	@param	[in] AccessMap				Access map to modify.
- *	@param	[in] DenyAccess				If this value is non-zero, port access will be denied.
- *	@return								None.
- *	
- */
-{
-	ULONG Address = (ULONG)(USHORT)PortAccessEntry->StartAddress;
-	ULONG AddressEnd = (ULONG)(USHORT)PortAccessEntry->EndAddress;
-
-	if (AddressEnd > 0xffff)
-		AddressEnd = 0xffff;
-
-	if (Address <= AddressEnd)
-	{
-		DIO_FUNC_TRACE("%s port access 0x%04x - 0x%04x\n", 
-			DenyAccess ? "Deny" : "Allow", 
-			Address, AddressEnd);
-	}
-	else
-	{
-		DIO_FUNC_TRACE("Port access range 0x%04x - 0x%04x will be ignored\n", 
-			Address, AddressEnd);
-	}
-
-	if (DenyAccess)
-	{
-		while (Address <= AddressEnd)
-		{
-			AccessMap->Map[Address >> 3] |= (UCHAR)(1 << (Address & 0x07));
-			Address++;
-		}
-	}
-	else
-	{
-		while (Address <= AddressEnd)
-		{
-			AccessMap->Map[Address >> 3] &= ~(UCHAR)(1 << (Address & 0x07));
-			Address++;
-		}
-	}
-}
-
-VOID
-DioDenyConventionalPortAccess(
-	IN IO_ACCESS_MAP *AccessMap)
-/**
- *	@brief	Denies the port I/O access for well-known address.
- *	
- *	@param	[in] AccessMap				Access map to modify.
- *	@return								None.
- *	
- */
-{
-#ifdef DIO_DENY_CONVENTIONAL_PORT_ACCESS
-	ULONG i;
-	for (i = 0; i < ARRAYSIZE(DiopConventionalPortAccessListForDeny); i++)
-		DiopSetIoAccessMap(&DiopConventionalPortAccessListForDeny[i], AccessMap, TRUE);
-#endif
-}
-
 BOOLEAN
-DioSetIoAccessMapByPacket(
-	IN OPTIONAL DIO_PACKET_PORTACCESS *PortAccess, 
-	IN IO_ACCESS_MAP *AccessMap)
+DioPortIo(
+	IN DIO_PORT_RANGE *Ranges, 
+	IN ULONG Count, 
+	OPTIONAL IN OUT PUCHAR Buffer, 
+	IN ULONG BufferLength, 
+	OUT ULONG *TransferredLength, 
+	IN BOOLEAN Write)
 /**
- *	@brief	Enables port I/O access for specified address range.
+ *	@brief	Do the direct port I/O for given address range.
  *	
- *	@param	[in] PortAccess				Address of packet.
- *	@param	[in] AccessMap				Access map to modify.
+ *	@param	[in] Ranges					Contains one or multiple port range(s).
+ *	@param	[in] Count					Number of port range.
+ *	@param	[in, out, opt] Buffer		Address of I/O buffer. This parameter can be NULL.\n
+ *										1) Buffer == NULL\n
+ *										- Returns the test result whether the access is allowed or not.\n
+ *										2) Buffer != NULL && Write == FALSE\n
+ *										- Results will be copied to the Buffer.\n
+ *										3) Buffer != NULL && Write != FALSE\n
+ *										- Contents of Buffer will be sent to given address range.\n
+ *	@param	[in] BufferLength			Caller-supplied buffer length in bytes.
+ *	@param	[out] TransferredLength		Address of variable that receives the transferred length in bytes.
+ *	@param	[in] Write					Port input if FALSE, port output otherwise.
  *	@return								Non-zero if successful.
  *	
  */
 {
 	ULONG i;
+	KIRQL Irql;
+	ULONG TotalLength = 0;
 
-	RtlFillMemory(AccessMap->Map, sizeof(AccessMap->Map), -1);
-
-	if (!PortAccess)
-	{
-		DIO_FUNC_TRACE("Any port access will be denied\n");
-		return TRUE;
-	}
-
-	DIO_FUNC_TRACE("Entry count = %d\n", PortAccess->Count);
+	DIO_FUNC_TRACE("Range count = %d\n", Count);
 	
-	if (PortAccess->Count > DIO_PORTACCESS_ENTRY_MAXIMUM)
+	if (Count > DIO_MAXIMUM_PORT_IO_REQUEST)
 	{
 		DIO_FUNC_TRACE("Maximum entry count exceeded\n");
 		return FALSE;
 	}
 
-	for (i = 0; i < PortAccess->Count; i++)
+	for (i = 0; i < Count; i++)
 	{
-		DIO_FUNC_TRACE("[%d] 0x%x - 0x%x\n", i, PortAccess->Entry[i].StartAddress, PortAccess->Entry[i].EndAddress);
-		DiopSetIoAccessMap(&PortAccess->Entry[i], AccessMap, FALSE);
+		DIO_FUNC_TRACE("[%d] 0x%x - 0x%x\n", i, Ranges[i].StartAddress, Ranges[i].EndAddress);
+
+		if (!DioTestPortRange(Ranges[i].StartAddress, Ranges[i].EndAddress))
+		{
+			DIO_FUNC_TRACE("[%d] Inaccessible address range\n", i);
+			return FALSE;
+		}
+
+		TotalLength += Ranges[i].EndAddress - Ranges[i].StartAddress + 1;
 	}
 
-	// Deny port access for conventional address.
-	DioDenyConventionalPortAccess(AccessMap);
+	if (!Buffer)
+		return TRUE;
+
+	if (BufferLength < TotalLength)
+	{
+		DIO_FUNC_TRACE("Insufficient buffer length\n");
+		return FALSE;
+	}
+
+	if (Write)
+		DIO_FUNC_TRACE("Writing to the port...\n");
+	else
+		DIO_FUNC_TRACE("Reading from the port...\n");
+
+	// Only one instance at most can access the port simultaneously.
+	KeAcquireSpinLock(&DiopPortReadWriteLock, &Irql);
+
+	for (i = 0; i < Count; i++)
+	{
+		ULONG Length = Ranges[i].EndAddress - Ranges[i].StartAddress + 1;
+
+		__writeeflags(__readeflags() & ~(1 << 10));
+
+		if (Write)
+			__outbytestring(Ranges[i].StartAddress, Buffer + TotalLength, Length);
+		else
+			__inbytestring(Ranges[i].StartAddress, Buffer + TotalLength, Length);
+
+		TotalLength += Length;
+	}
+
+	KeReleaseSpinLock(&DiopPortReadWriteLock, Irql);
+
+	DIO_FUNC_TRACE("Total %d bytes transferred\n", TotalLength);
+
+	if (TransferredLength)
+		*TransferredLength = TotalLength;
 
 	return TRUE;
 }
+
 
 BOOLEAN
 DioRegisterSelf(
@@ -231,7 +285,7 @@ DioRegisterSelf(
 	PEPROCESS CurrentProcess = PsGetCurrentProcess();
 	PEPROCESS RegisteredProcess = NULL;
 
-	RegisteredProcess = (PEPROCESS)_InterlockedCompareExchange((LONG *)&DiopRegisteredProcess, (LONG)CurrentProcess, 0);
+	RegisteredProcess = (PEPROCESS)_InterlockedCompareExchangePointer((PVOID *)&DiopRegisteredProcess, (PVOID)CurrentProcess, 0);
 
 	if (RegisteredProcess != NULL && RegisteredProcess != CurrentProcess)
 	{
@@ -261,7 +315,7 @@ DioUnregister(
 	PEPROCESS RegisteredProcess = NULL;
 	PEPROCESS CurrentProcess = PsGetCurrentProcess();
 	
-	RegisteredProcess = (PEPROCESS)_InterlockedCompareExchange((LONG *)&DiopRegisteredProcess, 0, (LONG)CurrentProcess);
+	RegisteredProcess = (PEPROCESS)_InterlockedCompareExchangePointer((PVOID *)&DiopRegisteredProcess, 0, (PVOID)CurrentProcess);
 	if (!RegisteredProcess)
 	{
 		DIO_FUNC_TRACE("Failed to unregister because no process is registered\n");
@@ -269,7 +323,9 @@ DioUnregister(
 	}
 
 	if (DisableIoAccess)
-		Ke386IoSetAccessProcess(RegisteredProcess, 0);
+	{
+//		Ke386IoSetAccessProcess(RegisteredProcess, 0);
+	}
 
 	DIO_FUNC_TRACE("Unregistered %d\n", PsGetProcessId(RegisteredProcess));
 
@@ -312,7 +368,7 @@ DioForceUnregister(
 			ObfDereferenceObject(RegisteredProcess);
 
 			// We don't need barrier, use xchg instead
-			_InterlockedExchange((volatile LONG *)&DiopRegisteredProcess, 0);
+			_InterlockedExchangePointer((volatile PVOID *)&DiopRegisteredProcess, 0);
 
 			Unregistered = TRUE;
 		}
@@ -396,6 +452,12 @@ DioDispatchCreate(
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
 
+	if (!DioRegisterSelf())
+	{
+		DIO_FUNC_TRACE("Process 0x%p is already registered\n", DiopRegisteredProcess);
+		return STATUS_ACCESS_DENIED;
+	}
+
 	Irp->IoStatus.Status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = 0;
 
@@ -443,6 +505,8 @@ DioDispatchIoControl(
 	PIO_STACK_LOCATION IoStackLocation;
 	ULONG IoControlCode;
 	ULONG InputBufferLength;
+	ULONG OutputBufferLength;
+	ULONG OutputActualLength;
 	DIO_PACKET *Packet;
 	NTSTATUS Status;
 	PEPROCESS CurrentProcess;
@@ -457,6 +521,8 @@ DioDispatchIoControl(
 	IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
 	IoControlCode = IoStackLocation->Parameters.DeviceIoControl.IoControlCode;
 	InputBufferLength = IoStackLocation->Parameters.DeviceIoControl.InputBufferLength;
+	OutputBufferLength = IoStackLocation->Parameters.DeviceIoControl.OutputBufferLength;
+	OutputActualLength = 0;
 
 	DIO_FUNC_TRACE("IOCTL from process %d\n", PsGetProcessId(CurrentProcess));
 
@@ -478,7 +544,7 @@ DioDispatchIoControl(
 		//
 
 		Packet = (DIO_PACKET *)Irp->AssociatedIrp.SystemBuffer;
-		if (!DiopValidatePacketBuffer(Packet, InputBufferLength, IoControlCode))
+		if (!DiopValidatePacketBuffer(Packet, InputBufferLength, OutputBufferLength, IoControlCode))
 		{
 			DIO_FUNC_TRACE("Buffer validation failed\n");
 			Status = STATUS_INVALID_PARAMETER;
@@ -492,41 +558,44 @@ DioDispatchIoControl(
 
 		switch (IoControlCode)
 		{
-		case DIO_IOCTL_SET_PORTACCESS:
-			if (!DioRegisterSelf())
-			{
-				DIO_FUNC_TRACE("Process 0x%p is already registered\n", DiopRegisteredProcess);
-				Status = STATUS_ACCESS_DENIED;
-				break;
-			}
-
-			// Create the I/O access map from packet.
-			if (!DioSetIoAccessMapByPacket(&Packet->PortAccess, DiopIoAccessMap))
-			{
-				DIO_FUNC_TRACE("Failed to prepare access map\n");
-				Status = STATUS_INVALID_PARAMETER;
-				break;
-			}
-
-			DIO_FUNC_TRACE("Setting port permission for process 0x%p (%d)\n", 
+		case DIO_IOCTL_READ_PORT:
+			// Input from the port.
+			DIO_FUNC_TRACE("Port read request from process 0x%p (%d)\n", 
 				CurrentProcess, PsGetProcessId(CurrentProcess));
 
-			Ke386IoSetAccessProcess(CurrentProcess, 1);
-			Ke386SetIoAccessMap(1, DiopIoAccessMap);
+			if (!DioPortIo(Packet->PortIo.AddressRange, 
+							Packet->PortIo.RangeCount, 
+							PACKET_PORT_IO_GET_DATA_ADDRESS(&Packet->PortIo), 
+							InputBufferLength, 
+							&OutputActualLength, 
+							FALSE))
+			{
+				DIO_FUNC_TRACE("Failed to I/O operation\n");
+				Status = STATUS_UNSUCCESSFUL;
+				break;
+			}
+
+			OutputActualLength += PACKET_PORT_IO_GET_LENGTH(Packet->PortIo.RangeCount);
 			break;
 
-		case DIO_IOCTL_RESET_PORTACCESS:
-			if (!DioSetIoAccessMapByPacket(NULL, DiopIoAccessMap))
+		case DIO_IOCTL_WRITE_PORT:
+			// Output to the port.
+			DIO_FUNC_TRACE("Port write request from process 0x%p (%d)\n", 
+				CurrentProcess, PsGetProcessId(CurrentProcess));
+
+			if (!DioPortIo(Packet->PortIo.AddressRange, 
+							Packet->PortIo.RangeCount, 
+							PACKET_PORT_IO_GET_DATA_ADDRESS(&Packet->PortIo), 
+							InputBufferLength, 
+							NULL, 
+							TRUE))
 			{
-				DIO_FUNC_TRACE("Failed to prepare access map\n");
-				Status = STATUS_INVALID_PARAMETER;
+				DIO_FUNC_TRACE("Failed to I/O operation\n");
+				Status = STATUS_UNSUCCESSFUL;
 				break;
 			}
 
-			DIO_FUNC_TRACE("Resetting port permission to initial state for process 0x%p (%d)\n", 
-				CurrentProcess, PsGetProcessId(CurrentProcess));
-
-			Ke386IoSetAccessProcess(CurrentProcess, 0);
+			OutputActualLength += PACKET_PORT_IO_GET_LENGTH(Packet->PortIo.RangeCount);
 			break;
 
 		default:
@@ -540,7 +609,7 @@ DioDispatchIoControl(
 	//
 
 	Irp->IoStatus.Status = Status;
-	Irp->IoStatus.Information = 0;
+	Irp->IoStatus.Information = OutputActualLength;
 
 	IofCompleteRequest(Irp, IO_NO_INCREMENT);
 
@@ -569,9 +638,6 @@ DioDriverUnload(
 
 	DioUnregister(TRUE);
 
-	// FIXME : Is it safe to free the map?
-	DIO_FREE(DiopIoAccessMap);
-
 	DIO_FUNC_TRACE("Byebye!\n\n");
 
 #else
@@ -598,7 +664,6 @@ DriverEntry(
  */
 {
 	NTSTATUS Status;
-	IO_ACCESS_MAP *AccessMap;
 	PDEVICE_OBJECT DeviceObject;
 	ULONG i;
 
@@ -611,18 +676,18 @@ DriverEntry(
 	RtlInitUnicodeString(&DiopDeviceName, L"\\Device\\Dioport");
 	RtlInitUnicodeString(&DiopDosDeviceName, L"\\DosDevices\\Dioport");
 
-	AccessMap = (IO_ACCESS_MAP *)DIO_ALLOC(sizeof(*AccessMap));
-	if (!AccessMap)
-	{
-		DIO_FUNC_TRACE("ExAllocatePoolWithTag failed\n");
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
+//	AccessMap = (IO_ACCESS_MAP *)DIO_ALLOC(sizeof(*AccessMap));
+//	if (!AccessMap)
+//	{
+//		DIO_FUNC_TRACE("ExAllocatePoolWithTag failed\n");
+//		return STATUS_INSUFFICIENT_RESOURCES;
+//	}
 
 	Status = IoCreateDevice(DriverObject, 0, &DiopDeviceName, FILE_DEVICE_UNKNOWN, 0, FALSE, &DeviceObject);
 	if (!NT_SUCCESS(Status))
 	{
 		DIO_FUNC_TRACE("IoCreateDevice failed\n");
-		DIO_FREE(AccessMap);
+//		DIO_FREE(AccessMap);
 
 		return Status;
 	}
@@ -631,7 +696,7 @@ DriverEntry(
 	if (!NT_SUCCESS(Status))
 	{
 		IoDeleteDevice(DeviceObject);
-		DIO_FREE(AccessMap);
+//		DIO_FREE(AccessMap);
 		
 		DIO_FUNC_TRACE("IoCreateSymbolicLink failed\n");
 		return Status;
@@ -664,11 +729,11 @@ DriverEntry(
 	// Initialize the globals.
 	//
 
+	KeInitializeSpinLock(&DiopPortReadWriteLock);
 	KeInitializeSpinLock(&DiopForceUnregisterLock);
 
 	DiopDriverObject = DriverObject;
 	DiopDeviceObject = DeviceObject;
-	DiopIoAccessMap = AccessMap;
 
 	return Status;
 }

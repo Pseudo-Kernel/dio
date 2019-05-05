@@ -29,9 +29,12 @@ DefaultDestDir = 12
 ;
 
 [Manufacturer]
-%DIOPort.Manufacturer% = DIOPort.Models
+%DIOPort.Manufacturer% = DIOPort.Models,NT,NTamd64
 
-[DIOPort.Models]
+[DIOPort.Models.NT]
+%DIOPort.DeviceDesc% = DIOPort,ROOT\DIOPort
+
+[DIOPort.Models.NTamd64]
 %DIOPort.DeviceDesc% = DIOPort,ROOT\DIOPort
 
 ;
@@ -59,11 +62,12 @@ ServiceBinary  = %12%\DIOPort.sys
 [DIOPort.CopyFiles]
 DIOPort.sys,,,0x00004000
 
-[SourceDisksNames.x86]
+[SourceDisksNames]
 1 = %DIOPort.DiskId1%,,,""
 
 [SourceDisksFiles]
 DIOPort.sys = 1,,        ; File for disk #1
+
 
 ;
 ; Strings
