@@ -2,10 +2,18 @@
 Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual Studio 2010
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DIOPort", "DIOPort\DIOPort.vcxproj", "{87C0A844-5B08-4584-8D1D-BD20CDBA4DE0}"
+	ProjectSection(ProjectDependencies) = postProject
+		{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4} = {BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DIOUM", "DIOUM\DIOUM.vcxproj", "{A24BB490-764F-41AD-8ACA-B89D242F4BE5}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DIOUMTest", "DIOUMTest\DIOUMTest.vcxproj", "{EAC7D571-63A8-4B01-858A-F2296D861B69}"
+	ProjectSection(ProjectDependencies) = postProject
+		{A24BB490-764F-41AD-8ACA-B89D242F4BE5} = {A24BB490-764F-41AD-8ACA-B89D242F4BE5}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CertDelete", "CertDelete\CertDelete.vcxproj", "{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,6 +47,14 @@ Global
 		{EAC7D571-63A8-4B01-858A-F2296D861B69}.Release|Win32.Build.0 = Release|Win32
 		{EAC7D571-63A8-4B01-858A-F2296D861B69}.Release|x64.ActiveCfg = Release|Win32
 		{EAC7D571-63A8-4B01-858A-F2296D861B69}.Release|x64.Build.0 = Release|Win32
+		{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}.Debug|Win32.ActiveCfg = Debug|Win32
+		{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}.Debug|Win32.Build.0 = Debug|Win32
+		{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}.Debug|x64.ActiveCfg = Debug|Win32
+		{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}.Debug|x64.Build.0 = Debug|Win32
+		{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}.Release|Win32.ActiveCfg = Release|Win32
+		{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}.Release|Win32.Build.0 = Release|Win32
+		{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}.Release|x64.ActiveCfg = Release|Win32
+		{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}.Release|x64.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

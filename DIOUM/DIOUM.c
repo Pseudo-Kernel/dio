@@ -294,5 +294,81 @@ DioWritePortMultiple(
 	return Result;
 }
 
+BOOL
+APIENTRY
+DioVfIoctlTest(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	IN ULONG AddressRangeCountMinimum, 
+	IN ULONG AddressRangeCountMaximum, 
+	IN ULONG TestCount)
+{
+	ULONG i;
 
+	if (!DiopValidateContext(Context))
+		return FALSE;
+
+	if (AddressRangeCountMaximum > AddressRangeCountMaximum)
+		return FALSE;
+
+	EnterCriticalSection(&Context->CriticalSection);
+
+	srand(GetTickCount());
+
+	for (i = 0; i < TestCount; i++)
+	{
+		ULONG j = 0;
+		ULONG ReturnedLength = 0;
+		ULONG AddressRangeCount = AddressRangeCountMinimum + 
+			(rand() % (AddressRangeCountMaximum - AddressRangeCountMinimum + 1));
+		BOOL Result = FALSE;
+
+		ULONG InputBufferLength;
+		ULONG OutputBufferLength;
+
+		Context->InputBuffer.Packet.PortIo.RangeCount = AddressRangeCount;
+
+		for (j = 0; j < 1024; j++)
+			*((UCHAR *)Context->InputBuffer.Packet.PortIo.AddressRange + j) = (UCHAR)rand();
+
+		for (j = 0; j < 16; j++)
+		{
+			Context->InputBuffer.Packet.PortIo.AddressRange[j].StartAddress = 0x7000;
+			Context->InputBuffer.Packet.PortIo.AddressRange[j].EndAddress = 0x7000 + (rand() & 0x3ff);
+		}
+
+		InputBufferLength = rand() % 8192;
+		OutputBufferLength = rand() % 8192;
+		DTRACE("InputBufferLength %d, OutputBufferLength %d\n", InputBufferLength, OutputBufferLength);
+
+		Result = DeviceIoControl(
+			Context->Handle, 
+			DIO_IOCTL_READ_PORT, 
+			(PVOID)&Context->InputBuffer, 
+			InputBufferLength, 
+			(PVOID)&Context->OutputBuffer, 
+			OutputBufferLength, 
+			&ReturnedLength, 
+			NULL);
+
+		DTRACE("Read: Result %d, ReturnedLength %d, LastError %d\n", 
+			Result, ReturnedLength, GetLastError());
+
+		Result = DeviceIoControl(
+			Context->Handle, 
+			DIO_IOCTL_WRITE_PORT, 
+			(PVOID)&Context->InputBuffer, 
+			InputBufferLength, 
+			(PVOID)&Context->OutputBuffer, 
+			OutputBufferLength, 
+			&ReturnedLength, 
+			NULL);
+
+		DTRACE("Write: Result %d, ReturnedLength %d, LastError %d\n", 
+			Result, ReturnedLength, GetLastError());
+	}
+
+	LeaveCriticalSection(&Context->CriticalSection);
+
+	return TRUE;
+}
 

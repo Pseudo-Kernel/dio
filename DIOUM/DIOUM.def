@@ -7,3 +7,6 @@ DioShutdown
 DioRegisterPortAddressRange
 DioReadPortMultiple
 DioWritePortMultiple
+
+DioVfIoctlTest
+

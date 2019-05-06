@@ -1,13 +1,11 @@
 
 #include <ntddk.h>
-//#include <intrin.h>
+#include <ntstrsafe.h>
 #include "../Include/dioctl.h"
 
-#define	DIO_DENY_CONVENTIONAL_PORT_ACCESS
-#define	DIO_SUPPORT_UNLOAD
-
-#pragma message("Define DIO_DENY_CONVENTIONAL_PORT_ACCESS if you want to deny port access for conventional address.")
-#pragma message("Define DIO_SUPPORT_UNLOAD if you want to make driver unloadable.")
+//#define	DIO_DENY_CONVENTIONAL_PORT_ACCESS	// To deny the conventional port access
+#define	DIO_SUPPORT_UNLOAD						// To support driver unload
+#define DIO_TEST_MODE							// Define if you want to run with IOCTL test mode only. Real port I/O is not performed.
 
 
 #define DIO_ALLOC(_size)						ExAllocatePoolWithTag(NonPagedPool, (_size), 'OIDp')
@@ -50,7 +48,7 @@ volatile PEPROCESS DiopRegisteredProcess = NULL;
  *
  *	Since the DIO board address starts at 0x7000, we only allow maximum 1024 channels here.
  */
-DIO_PORT_RANGE DiopConventionalPortAccessListForDeny[] = {
+DIO_PORT_RANGE DiopConventionalPortAddressRangeListForDeny[] = {
 	{ 0x0000, 0x6fff }, /* 0x0000 ~ 0x6fff */
 	/* Do not deny DIO board address 0x7000 ~ 0x7000 + 0x10 * BoardCount,
 	   where the BoardCount = 8 (total 1024 channels) */
@@ -61,6 +59,44 @@ DIO_PORT_RANGE DiopConventionalPortAccessListForDeny[] = {
 //
 // Our I/O control packet helper function.
 //
+
+VOID
+DioDbgDumpBytes(
+	IN PSZ Message, 
+	IN ULONG DumpLength, 
+	IN ULONG DumpLengthMaximum, 
+	IN PUCHAR Buffer)
+/**
+ *	@brief	Prints the memory bytes.
+ *	
+ *	Note that this function can print 128 bytes at most.
+ *
+ *	@param	[in] Message				ASCII string to be printed.
+ *	@param	[in] DumpLength				Length of the bytes to be printed.
+ *	@param	[in] DumpLengthMaximum		Maximum length of the bytes to be printed.
+ *	@param	[in] Buffer					Buffer address which contains the data to be printed.
+ *	@return								None.
+ *	
+ */
+{
+	CHAR Text[128 * (2 + 1) + 1] = { 0 };
+	ULONG RemainingTextLength = ARRAYSIZE(Text);
+	ULONG BufferLength = min(DumpLength, DumpLengthMaximum);
+	ULONG i;
+
+	for (i = 0; i < BufferLength; i++)
+	{
+		RtlStringCbPrintfA(Text + i * 3, RemainingTextLength, "%02X ", Buffer[i]);
+		Text[i * 3] = 0;
+
+		if (RemainingTextLength <= 3)
+			break;
+
+		RemainingTextLength -= 3;
+	}
+
+	DIO_TRACE("%s\n => %s\n", Message, Text);
+}
 
 BOOLEAN
 DioTestPortRange(
@@ -75,15 +111,15 @@ DioTestPortRange(
  *	
  */
 {
-#ifdef DIO_DENY_CONVENTIONAL_PORT_ACCESS
 	ULONG i;
 
 	if (StartAddress > EndAddress)
 		return FALSE;
 
-	for (i = 0; i < ARRAYSIZE(DiopConventionalPortAccessListForDeny); i++)
+#ifdef DIO_DENY_CONVENTIONAL_PORT_ACCESS
+	for (i = 0; i < ARRAYSIZE(DiopConventionalPortAddressRangeListForDeny); i++)
 	{
-		DIO_PORT_RANGE *AddressRange = DiopConventionalPortAccessListForDeny + i;
+		DIO_PORT_RANGE *AddressRange = DiopConventionalPortAddressRangeListForDeny + i;
 
 		if ((StartAddress <= AddressRange->StartAddress && AddressRange->StartAddress <= EndAddress) || 
 			(StartAddress <= AddressRange->EndAddress && AddressRange->EndAddress <= EndAddress))
@@ -117,25 +153,36 @@ DiopValidatePacketBuffer(
 
 	switch (IoControlCode)
 	{
-	case DIO_IOFN_READ_PORT:
-	case DIO_IOFN_WRITE_PORT:
+	case DIO_IOCTL_READ_PORT:
+	case DIO_IOCTL_WRITE_PORT:
 		{
 			ULONG RangeCount = 0;
 			ULONG DataLength = 0;
 			ULONG RequiredInputLength = 0;
 			ULONG RequiredOutputLength = 0;
 
+			DIO_FUNC_TRACE("InputBufferLength %d, OutputBufferLength %d\n", InputBufferLength, OutputBufferLength);
+
 			RequiredInputLength = sizeof(Packet->PortIo);
 			if (InputBufferLength < RequiredInputLength)
+			{
+				DIO_FUNC_TRACE("RequiredInputLength %d\n", RequiredInputLength);
 				return FALSE;
+			}
 
 			RangeCount = Packet->PortIo.RangeCount;
 			if (RangeCount > DIO_MAXIMUM_PORT_IO_REQUEST)
+			{
+				DIO_FUNC_TRACE("RangeCount %d\n", RangeCount);
 				return FALSE;
+			}
 
 			RequiredInputLength += RangeCount * sizeof(DIO_PORT_RANGE);
 			if (InputBufferLength < RequiredInputLength)
+			{
+				DIO_FUNC_TRACE("RequiredInputLength %d\n", RequiredInputLength);
 				return FALSE;
+			}
 
 			//
 			// Calculate the data length to transfer.
@@ -149,8 +196,12 @@ DiopValidatePacketBuffer(
 					DataLength += AddressRange->EndAddress - AddressRange->StartAddress + 1;
 			}
 
-			// Data length cannot be equal or bigger then 64K.
-			DIO_ASSERT(DataLength < 0x10000);
+			// Data length cannot be equal or bigger than 64K.
+			if (DataLength > 0x10000)
+			{
+				DIO_FUNC_TRACE("DataLength (%d) must be less than 64K\n", DataLength);
+				return FALSE;
+			}
 
 
 			// Port read  : InputBuffer  [RangeCount] [Ranges]
@@ -160,18 +211,22 @@ DiopValidatePacketBuffer(
 
 			RequiredOutputLength = RequiredInputLength;
 
-			if (IoControlCode == DIO_IOFN_READ_PORT)
+			if (IoControlCode == DIO_IOCTL_READ_PORT)
 				RequiredOutputLength += DataLength;
 			else
 				RequiredInputLength += DataLength;
 
 			if (InputBufferLength < RequiredInputLength || 
 				OutputBufferLength < RequiredOutputLength)
+			{
+				DIO_FUNC_TRACE("RequiredInputLength %d, RequiredOutputLength %d\n", RequiredInputLength, RequiredOutputLength);
 				return FALSE;
+			}
 		}
 		break;
 
 	default:
+		DIO_FUNC_TRACE("Unknown IOCTL\n");
 		return FALSE;
 	}
 
@@ -192,11 +247,11 @@ DioPortIo(
  *	@param	[in] Ranges					Contains one or multiple port range(s).
  *	@param	[in] Count					Number of port range.
  *	@param	[in, out, opt] Buffer		Address of I/O buffer. This parameter can be NULL.\n
- *										1) Buffer == NULL\n
+ *										case 1) Buffer == NULL\n
  *										- Returns the test result whether the access is allowed or not.\n
- *										2) Buffer != NULL && Write == FALSE\n
+ *										case 2) Buffer != NULL && Write == FALSE\n
  *										- Results will be copied to the Buffer.\n
- *										3) Buffer != NULL && Write != FALSE\n
+ *										case 3) Buffer != NULL && Write != FALSE\n
  *										- Contents of Buffer will be sent to given address range.\n
  *	@param	[in] BufferLength			Caller-supplied buffer length in bytes.
  *	@param	[out] TransferredLength		Address of variable that receives the transferred length in bytes.
@@ -231,11 +286,15 @@ DioPortIo(
 	}
 
 	if (!Buffer)
+	{
+		DIO_FUNC_TRACE("Null buffer, transfer ignored\n");
 		return TRUE;
+	}
 
 	if (BufferLength < TotalLength)
 	{
-		DIO_FUNC_TRACE("Insufficient buffer length\n");
+		DIO_FUNC_TRACE("Insufficient buffer length (BufferLength %d, RequiredLength %d)\n", 
+			BufferLength, TotalLength);
 		return FALSE;
 	}
 
@@ -251,6 +310,12 @@ DioPortIo(
 	{
 		ULONG Length = Ranges[i].EndAddress - Ranges[i].StartAddress + 1;
 
+#ifdef DIO_TEST_MODE
+		if (Write)
+			DioDbgDumpBytes("Writing bytes", Length, 16, Buffer + TotalLength);
+		else
+			DioDbgDumpBytes("Reading bytes", Length, 16, Buffer + TotalLength);
+#else
 		__writeeflags(__readeflags() & ~(1 << 10));
 
 		if (Write)
@@ -259,6 +324,7 @@ DioPortIo(
 			__inbytestring(Ranges[i].StartAddress, Buffer + TotalLength, Length);
 
 		TotalLength += Length;
+#endif
 	}
 
 	KeReleaseSpinLock(&DiopPortReadWriteLock, Irql);
@@ -303,11 +369,10 @@ DioRegisterSelf(
 
 BOOLEAN
 DioUnregister(
-	IN BOOLEAN DisableIoAccess)
+	VOID)
 /**
  *	@brief	Unregisters caller process.
  *	
- *	@param	[in] DisableIoAccess		If this value is non-zero, port I/O access will be disabled.
  *	@return								Non-zero if successful.
  *	
  */
@@ -320,11 +385,6 @@ DioUnregister(
 	{
 		DIO_FUNC_TRACE("Failed to unregister because no process is registered\n");
 		return FALSE;
-	}
-
-	if (DisableIoAccess)
-	{
-//		Ke386IoSetAccessProcess(RegisteredProcess, 0);
 	}
 
 	DIO_FUNC_TRACE("Unregistered %d\n", PsGetProcessId(RegisteredProcess));
@@ -360,10 +420,6 @@ DioForceUnregister(
 	{
 		if (UnregisterProcessId == PsGetProcessId(RegisteredProcess))
 		{
-			// WARNING: Calling Ke386IoSetAccessProcess is probited here!
-//			if (DisableIoAccess)
-//				Ke386IoSetAccessProcess(RegisteredProcess, 0);
-
 			// OK, dereference it
 			ObfDereferenceObject(RegisteredProcess);
 
@@ -566,11 +622,11 @@ DioDispatchIoControl(
 			if (!DioPortIo(Packet->PortIo.AddressRange, 
 							Packet->PortIo.RangeCount, 
 							PACKET_PORT_IO_GET_DATA_ADDRESS(&Packet->PortIo), 
-							InputBufferLength, 
+							OutputBufferLength, 
 							&OutputActualLength, 
 							FALSE))
 			{
-				DIO_FUNC_TRACE("Failed to I/O operation\n");
+				DIO_FUNC_TRACE("I/O failed\n");
 				Status = STATUS_UNSUCCESSFUL;
 				break;
 			}
@@ -590,7 +646,7 @@ DioDispatchIoControl(
 							NULL, 
 							TRUE))
 			{
-				DIO_FUNC_TRACE("Failed to I/O operation\n");
+				DIO_FUNC_TRACE("I/O failed\n");
 				Status = STATUS_UNSUCCESSFUL;
 				break;
 			}
@@ -636,11 +692,12 @@ DioDriverUnload(
 
 	PsSetCreateProcessNotifyRoutine(DiopCreateProcessNotifyRoutine, TRUE);
 
-	DioUnregister(TRUE);
+	DioUnregister();
 
 	DIO_FUNC_TRACE("Byebye!\n\n");
 
 #else
+	DIO_FUNC_TRACE("*** STOP! ***\n\n");
 	__debugbreak();
 #endif
 }
@@ -676,19 +733,10 @@ DriverEntry(
 	RtlInitUnicodeString(&DiopDeviceName, L"\\Device\\Dioport");
 	RtlInitUnicodeString(&DiopDosDeviceName, L"\\DosDevices\\Dioport");
 
-//	AccessMap = (IO_ACCESS_MAP *)DIO_ALLOC(sizeof(*AccessMap));
-//	if (!AccessMap)
-//	{
-//		DIO_FUNC_TRACE("ExAllocatePoolWithTag failed\n");
-//		return STATUS_INSUFFICIENT_RESOURCES;
-//	}
-
 	Status = IoCreateDevice(DriverObject, 0, &DiopDeviceName, FILE_DEVICE_UNKNOWN, 0, FALSE, &DeviceObject);
 	if (!NT_SUCCESS(Status))
 	{
 		DIO_FUNC_TRACE("IoCreateDevice failed\n");
-//		DIO_FREE(AccessMap);
-
 		return Status;
 	}
 
@@ -696,8 +744,6 @@ DriverEntry(
 	if (!NT_SUCCESS(Status))
 	{
 		IoDeleteDevice(DeviceObject);
-//		DIO_FREE(AccessMap);
-		
 		DIO_FUNC_TRACE("IoCreateSymbolicLink failed\n");
 		return Status;
 	}

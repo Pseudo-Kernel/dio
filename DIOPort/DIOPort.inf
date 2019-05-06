@@ -9,7 +9,9 @@ Signature = "$Windows NT$"
 Provider = %DIOPort.INFProvider%
 ClassGUID = {75BEC7D6-7F4E-4DAE-9A2B-B4D09B839B18}
 Class = PortIOService
-DriverVer = 04/04/2019,1.0.0.0
+DriverVer = 05/04/2019,1.1.0.0
+CatalogFile.NT = DIOPortx86.cat
+CatalogFile.NTamd64 = DIOPortx64.cat
 
 [ClassInstall]
 AddReg = Class.AddReg

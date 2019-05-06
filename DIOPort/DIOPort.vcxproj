@@ -89,8 +89,13 @@ if "%WIN7BASE%"=="" (
 call ddkbuild -WIN7A64 checked .
 copy "$(ProjectDir)objchk_win7_amd64\amd64\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
 
+"$(SolutionDir)Tools\CertDelete.exe" KMDTestCertStore
+set errorlevel=0
 makecert -r -pe -ss KMDTestCertStore -n "CN=test.com(Test)" "$(OutDir)\testcert.cer"
 signtool sign /a /v /s KMDTestCertStore /n test.com(Test) /t http://timestamp.verisign.com/scripts/timestamp.dll "$(OutDir)$(TargetName).sys"
+
+copy dioport.inf "$(OutDir)" /y
+inf2cat "/driver:$(OutDir)." /os:7_X64,7_X86
 </NMakeBuildCommandLine>
     <NMakeOutput>DIOPort.sys</NMakeOutput>
     <NMakeReBuildCommandLine>del "$(OutDir)$(TargetName).sys"
@@ -100,8 +105,13 @@ if "%WIN7BASE%"=="" (
 call ddkbuild -WIN7A64 checked . -cZ
 copy "$(ProjectDir)objchk_win7_amd64\amd64\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
 
+"$(SolutionDir)Tools\CertDelete.exe" KMDTestCertStore
+set errorlevel=0
 makecert -r -pe -ss KMDTestCertStore -n "CN=test.com(Test)" "$(OutDir)\testcert.cer"
 signtool sign /a /v /s KMDTestCertStore /n test.com(Test) /t http://timestamp.verisign.com/scripts/timestamp.dll "$(OutDir)$(TargetName).sys"
+
+copy dioport.inf "$(OutDir)" /y
+inf2cat "/driver:$(OutDir)." /os:7_X64,7_X86
 </NMakeReBuildCommandLine>
     <NMakePreprocessorDefinitions>WIN32;_X64_;_AMD64_;_M_AMD64;NTDDI_VERSION=NTDDI_WINXP;_DEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <SourcePath>C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt;C:\WinDDK\7600.16385.1\inc\ddk</SourcePath>
@@ -110,6 +120,7 @@ signtool sign /a /v /s KMDTestCertStore /n test.com(Test) /t http://timestamp.ve
     <NMakeIncludeSearchPath>C:\WinDDK\7600.16385.1\inc;C:\WinDDK\7600.16385.1\inc\ddk;C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt</NMakeIncludeSearchPath>
     <AdditionalOptions />
     <NMakeForcedIncludes />
+    <ExecutablePath>C:\WinDDK\7600.16385.1\bin\selfsign;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <NMakeBuildCommandLine>del "$(OutDir)$(TargetName).sys"
@@ -141,8 +152,13 @@ if "%WIN7BASE%"=="" (
 call ddkbuild -WIN7A64 free .
 copy "$(ProjectDir)objfre_win7_amd64\amd64\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
 
+"$(SolutionDir)Tools\CertDelete.exe" KMDTestCertStore
+set errorlevel=0
 makecert -r -pe -ss KMDTestCertStore -n "CN=test.com(Test)" "$(OutDir)\testcert.cer"
 signtool sign /a /v /s KMDTestCertStore /n test.com(Test) /t http://timestamp.verisign.com/scripts/timestamp.dll "$(OutDir)$(TargetName).sys"
+
+copy dioport.inf "$(OutDir)" /y
+inf2cat "/driver:$(OutDir)." /os:7_X64,7_X86
 </NMakeBuildCommandLine>
     <NMakeOutput>DIOPort.sys</NMakeOutput>
     <NMakeReBuildCommandLine>del "$(OutDir)$(TargetName).sys"
@@ -152,14 +168,20 @@ if "%WIN7BASE%"=="" (
 call ddkbuild -WIN7A64 free . -cZ
 copy "$(ProjectDir)objfre_win7_amd64\amd64\$(TargetName).sys" "$(OutDir)$(TargetName).sys" /y
 
+"$(SolutionDir)Tools\CertDelete.exe" KMDTestCertStore
+set errorlevel=0
 makecert -r -pe -ss KMDTestCertStore -n "CN=test.com(Test)" "$(OutDir)\testcert.cer"
 signtool sign /a /v /s KMDTestCertStore /n test.com(Test) /t http://timestamp.verisign.com/scripts/timestamp.dll "$(OutDir)$(TargetName).sys"
+
+copy dioport.inf "$(OutDir)" /y
+inf2cat "/driver:$(OutDir)." /os:7_X64,7_X86
 </NMakeReBuildCommandLine>
     <NMakePreprocessorDefinitions>WIN32;_X64_;_AMD64_;_M_AMD64;NTDDI_VERSION=NTDDI_WINXP;NDEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <SourcePath>C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt;C:\WinDDK\7600.16385.1\inc\ddk</SourcePath>
     <ReferencePath>C:\WinDDK\7600.16385.1\lib\win7\i386</ReferencePath>
     <NMakeIncludeSearchPath>C:\WinDDK\7600.16385.1\inc;C:\WinDDK\7600.16385.1\inc\ddk;C:\WinDDK\7600.16385.1\inc\api;C:\WinDDK\7600.16385.1\inc\crt</NMakeIncludeSearchPath>
     <LibraryPath>C:\WinDDK\7600.16385.1\lib\win7\i386</LibraryPath>
+    <ExecutablePath>C:\WinDDK\7600.16385.1\bin\selfsign;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <ItemDefinitionGroup>
   </ItemDefinitionGroup>

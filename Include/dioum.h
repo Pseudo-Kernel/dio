@@ -47,6 +47,14 @@ DioWritePortMultiple(
 	OPTIONAL OUT ULONG *TransferredDataLength);
 
 
+BOOL
+APIENTRY
+DioVfIoctlTest(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	IN ULONG AddressRangeCountMinimum, 
+	IN ULONG AddressRangeCountMaximum, 
+	IN ULONG TestCount);
+
 #ifdef __cplusplus
 }
 #endif

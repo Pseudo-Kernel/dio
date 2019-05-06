@@ -3,19 +3,18 @@
 #include <Windows.h>
 #include "../Include/dioum.h"
 
-#pragma comment(lib, "dioum.lib")
+#pragma comment(lib, "../Include/dioum.lib")
 
 int main()
 {
 	DIOUM_DRIVER_CONTEXT *Context = DioInitialize();
 
 	DIOUM_PORT_RANGE PortRange[] = {
-		{ 0x0000, 0x0001 }, 
-		{ 0x7000, 0x7001 }, 
-		{ 0x7010, 0x7011 }, 
+		{ 0x7000, 0x703f }, 
+		{ 0x7050, 0x707f }, 
 	};
 
-	UCHAR Buffer[128];
+	UCHAR Buffer[0x100];
 	ULONG ReturnedLength;
 
 	if (!Context)
@@ -23,6 +22,8 @@ int main()
 		printf("DIO failed to initialize\n");
 		return -1;
 	}
+
+//	DioVfIoctlTest(Context, 0, 129, 100000);
 
 	do
 	{
@@ -43,9 +44,10 @@ int main()
 
 		if (!DioWritePortMultiple(Context, Buffer, ARRAYSIZE(Buffer), &ReturnedLength))
 		{
-			printf("Failed to write from the port\n");
+			printf("Failed to write to the port\n");
 			break;
 		}
+
 	} while(FALSE);
 
 	if (Context)
