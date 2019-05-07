@@ -46,6 +46,23 @@ DioWritePortMultiple(
 	IN ULONG BufferLength, 
 	OPTIONAL OUT ULONG *TransferredDataLength);
 
+BOOL
+APIENTRY
+DioGetXorMask(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	OUT UCHAR *ReadXorMask, 
+	OUT UCHAR *WriteXorMask);
+
+BOOL
+APIENTRY
+DioSetXorMask(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	IN UCHAR ReadXorMask, 
+	IN UCHAR WriteXorMask, 
+	IN BOOL SetRead, 
+	IN BOOL SetWrite);
+
+
 
 BOOL
 APIENTRY

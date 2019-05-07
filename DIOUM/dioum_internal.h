@@ -6,6 +6,9 @@
 
 typedef struct _DIOUM_DRIVER_CONTEXT {
 	ULONG Magic;					// DIOUM_CONTEXT_MAGIC
+	UCHAR ReadXorMask;
+	UCHAR WriteXorMask;
+	UCHAR Reserved[2];
 	HANDLE Handle;
 	CRITICAL_SECTION CriticalSection;
 

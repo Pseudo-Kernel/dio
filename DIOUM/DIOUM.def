@@ -8,5 +8,8 @@ DioRegisterPortAddressRange
 DioReadPortMultiple
 DioWritePortMultiple
 
+DioGetXorMask
+DioSetXorMask
+
 DioVfIoctlTest
 

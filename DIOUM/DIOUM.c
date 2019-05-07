@@ -1,4 +1,6 @@
 
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <stdio.h>
 #include <Windows.h>
 #include "../Include/dioctl.h"
@@ -10,6 +12,16 @@ CDECL
 DTRACE(
 	IN PSZ Format, 
 	...)
+/**
+ *	@brief	Prints the debug string.
+ *	
+ *	Note that this function can print 512-length string at most.
+ *
+ *	@param	[in] Format					Printf-like format ASCII string.
+ *	@param	[in] ...					Parameter list.
+ *	@return								None.
+ *	
+ */
 {
 	va_list Args;
 	CHAR Buffer[512] = { 0 } ;
@@ -25,6 +37,13 @@ PVOID
 APIENTRY
 DiopAllocate(
 	IN ULONG Size)
+/**
+ *	@brief	Allocates the memory.
+ *	
+ *	@param	[in] Size					Size of memory to allocate.
+ *	@return								Non-NULL if succeeded.
+ *	
+ */
 {
 	PVOID Pointer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, Size);
 
@@ -38,6 +57,13 @@ VOID
 APIENTRY
 DiopFree(
 	IN PVOID Pointer)
+/**
+ *	@brief	Frees the memory which is allocated by DiopAllocate().
+ *	
+ *	@param	[in] Pointer				Allocated memory.
+ *	@return								None.
+ *	
+ */
 {
 	HeapFree(GetProcessHeap(), 0, Pointer);
 }
@@ -46,6 +72,13 @@ BOOL
 APIENTRY
 DiopValidateContext(
 	IN DIOUM_DRIVER_CONTEXT *Context)
+/**
+ *	@brief	Validates the driver context.
+ *	
+ *	@param	[in] Context				Driver context to validate.
+ *	@return								FALSE if invalid.
+ *	
+ */
 {
 	if (!Context)
 		return FALSE;
@@ -83,6 +116,22 @@ DiopGetDataLength(
 	return TRUE;
 }
 
+ULONG
+APIENTRY
+DiopUnsafeXorCopy(
+	OUT PUCHAR DestinationBuffer, 
+	IN PUCHAR SourceBuffer, 
+	IN ULONG CopyLength, 
+	IN UCHAR XorMask)
+{
+	ULONG i;
+
+	for (i = 0; i < CopyLength; i++)
+		DestinationBuffer[i] = SourceBuffer[i] ^ XorMask;
+
+	return CopyLength;
+}
+
 
 DIOUM_DRIVER_CONTEXT *
 APIENTRY
@@ -108,6 +157,8 @@ DioInitialize(
 		if (Context->Handle == INVALID_HANDLE_VALUE)
 			break;
 
+		Context->ReadXorMask = 0x00;
+		Context->WriteXorMask = 0xff;
 		Context->InputBuffer.Packet.PortIo.RangeCount = 0;
 		Context->OutputBuffer.Packet.PortIo.RangeCount = 0;
 
@@ -126,6 +177,46 @@ DioInitialize(
 	DiopFree(Context);
 
 	return NULL;
+}
+
+BOOL
+APIENTRY
+DioGetXorMask(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	OUT UCHAR *ReadXorMask, 
+	OUT UCHAR *WriteXorMask)
+{
+	if (!DiopValidateContext(Context))
+		return FALSE;
+
+	if (ReadXorMask)
+		*ReadXorMask = Context->ReadXorMask;
+
+	if (WriteXorMask)
+		*WriteXorMask = Context->WriteXorMask;
+
+	return TRUE;
+}
+
+BOOL
+APIENTRY
+DioSetXorMask(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	IN UCHAR ReadXorMask, 
+	IN UCHAR WriteXorMask, 
+	IN BOOL SetRead, 
+	IN BOOL SetWrite)
+{
+	if (!DiopValidateContext(Context))
+		return FALSE;
+
+	if (SetRead)
+		Context->ReadXorMask = ReadXorMask;
+
+	if (SetWrite)
+		Context->WriteXorMask = WriteXorMask;
+
+	return TRUE;
 }
 
 BOOL
@@ -218,7 +309,7 @@ DioReadPortMultiple(
 
 			if (ReturnedLength == HeaderLength + DataLength)
 			{
-				memcpy(Buffer, Context->OutputBuffer.Bytes + HeaderLength, DataLength);
+				DiopUnsafeXorCopy(Buffer, Context->OutputBuffer.Bytes + HeaderLength, DataLength, Context->ReadXorMask);
 
 				if (ReturnedDataLength)
 					*ReturnedDataLength = DataLength;
@@ -260,7 +351,7 @@ DioWritePortMultiple(
 		ULONG HeaderLength = PACKET_PORT_IO_GET_LENGTH(Context->InputBuffer.Packet.PortIo.RangeCount);
 		ULONG ReturnedLength = 0;
 
-		memcpy(Context->InputBuffer.Bytes + HeaderLength, Buffer, DataLength);
+		DiopUnsafeXorCopy(Context->InputBuffer.Bytes + HeaderLength, Buffer, DataLength, Context->WriteXorMask);
 
 		Result = DeviceIoControl(
 			Context->Handle, 
@@ -302,6 +393,9 @@ DioVfIoctlTest(
 	IN ULONG AddressRangeCountMaximum, 
 	IN ULONG TestCount)
 {
+#if 1
+	return FALSE;
+#else
 	ULONG i;
 
 	if (!DiopValidateContext(Context))
@@ -353,22 +447,23 @@ DioVfIoctlTest(
 		DTRACE("Read: Result %d, ReturnedLength %d, LastError %d\n", 
 			Result, ReturnedLength, GetLastError());
 
-		Result = DeviceIoControl(
-			Context->Handle, 
-			DIO_IOCTL_WRITE_PORT, 
-			(PVOID)&Context->InputBuffer, 
-			InputBufferLength, 
-			(PVOID)&Context->OutputBuffer, 
-			OutputBufferLength, 
-			&ReturnedLength, 
-			NULL);
-
-		DTRACE("Write: Result %d, ReturnedLength %d, LastError %d\n", 
-			Result, ReturnedLength, GetLastError());
+//		Result = DeviceIoControl(
+//			Context->Handle, 
+//			DIO_IOCTL_WRITE_PORT, 
+//			(PVOID)&Context->InputBuffer, 
+//			InputBufferLength, 
+//			(PVOID)&Context->OutputBuffer, 
+//			OutputBufferLength, 
+//			&ReturnedLength, 
+//			NULL);
+//
+//		DTRACE("Write: Result %d, ReturnedLength %d, LastError %d\n", 
+//			Result, ReturnedLength, GetLastError());
 	}
 
 	LeaveCriticalSection(&Context->CriticalSection);
 
 	return TRUE;
+#endif
 }
 

@@ -3,9 +3,19 @@
 #include <ntstrsafe.h>
 #include "../Include/dioctl.h"
 
-//#define	DIO_DENY_CONVENTIONAL_PORT_ACCESS	// To deny the conventional port access
+#define	DIO_DENY_CONVENTIONAL_PORT_ACCESS		// To deny the conventional port access
 #define	DIO_SUPPORT_UNLOAD						// To support driver unload
-#define DIO_TEST_MODE							// Define if you want to run with IOCTL test mode only. Real port I/O is not performed.
+#define DIO_IGNORE_BREAKPOINT					// This option overrides DIO_IN_DEBUG_BREAKPOINT() to do nothing.
+//#define DIO_TEST_MODE							// Define if you want to run with IOCTL test mode only. Real port I/O is not performed.
+
+// Port address range for maximum 640 (=128x5) channels. (640 channels for input, 640 channels for output)
+#define DIO_PORT_ADDRESS_START					0x7000
+#define DIO_PORT_ADDRESS_END					0x704f
+
+C_ASSERT(
+	DIO_PORT_ADDRESS_START < DIO_PORT_ADDRESS_END && 
+	DIO_PORT_ADDRESS_START < 0x10000 && 
+	DIO_PORT_ADDRESS_END < 0x10000);
 
 
 #define DIO_ALLOC(_size)						ExAllocatePoolWithTag(NonPagedPool, (_size), 'OIDp')
@@ -19,11 +29,15 @@
 		__debugbreak();		\
 	}
 
+#ifdef DIO_IGNORE_BREAKPOINT
+#define	DIO_IN_DEBUG_BREAKPOINT()
+#else
 #define	DIO_IN_DEBUG_BREAKPOINT() {		\
 	if (!(*KdDebuggerNotPresent)) {		\
 		__debugbreak();					\
 	}									\
 }
+#endif
 
 
 
@@ -46,15 +60,17 @@ volatile PEPROCESS DiopRegisteredProcess = NULL;
 /**
  *	@brief	Predefined range of well-known port address.
  *
- *	Since the DIO board address starts at 0x7000, we only allow maximum 1024 channels here.
+ *	We only allow maximum 640 channels here.
  */
 DIO_PORT_RANGE DiopConventionalPortAddressRangeListForDeny[] = {
-	{ 0x0000, 0x6fff }, /* 0x0000 ~ 0x6fff */
+	{ 0x0000, DIO_PORT_ADDRESS_START - 1 }, 
 	/* Do not deny DIO board address 0x7000 ~ 0x7000 + 0x10 * BoardCount,
-	   where the BoardCount = 8 (total 1024 channels) */
-	{ 0x7080, 0xffff }, /* 0x7080 ~ 0xffff */
+	   where the BoardCount = 5 (total 640 channels) */
+	{ DIO_PORT_ADDRESS_END + 1, 0xffff }, 
 };
 #endif
+
+
 
 //
 // Our I/O control packet helper function.
@@ -87,7 +103,7 @@ DioDbgDumpBytes(
 	for (i = 0; i < BufferLength; i++)
 	{
 		RtlStringCbPrintfA(Text + i * 3, RemainingTextLength, "%02X ", Buffer[i]);
-		Text[i * 3] = 0;
+		Text[(i + 1) * 3] = 0;
 
 		if (RemainingTextLength <= 3)
 			break;
@@ -234,6 +250,47 @@ DiopValidatePacketBuffer(
 }
 
 BOOLEAN
+DiopInternalPortIo(
+	IN USHORT BaseAddress, 
+	IN OUT PUCHAR Buffer, 
+	IN ULONG Length, 
+	IN BOOLEAN Write)
+/**
+ *	@brief	Do the direct port I/O for given address.
+ *	
+ *	This function is reserved for internal use.
+ *	
+ *	@param	[in] BaseAddress			Base address to read/write.
+ *	@param	[in, out] Buffer			Address of buffer.
+ *	@param	[in] Length					Length in bytes to read/write.
+ *	@param	[in] Write					Port input if FALSE, port output otherwise.
+ *	@return								Non-zero if successful.
+ *	
+ */
+{
+	ULONG i;
+	ULONG Address;
+
+	Address = BaseAddress;
+
+	if (Address >= 0x10000 || Length >= 0x10000 || Address + Length > 0x10000)
+		return FALSE;
+
+	if (Write)
+	{
+		for (i = 0; i < Length; i++)
+			__outbyte((USHORT)(Address + i), Buffer[i]);
+	}
+	else
+	{
+		for (i = 0; i < Length; i++)
+			Buffer[i] = __inbyte((USHORT)(Address + i));
+	}
+
+	return TRUE;
+}
+
+BOOLEAN
 DioPortIo(
 	IN DIO_PORT_RANGE *Ranges, 
 	IN ULONG Count, 
@@ -262,7 +319,9 @@ DioPortIo(
 {
 	ULONG i;
 	KIRQL Irql;
-	ULONG TotalLength = 0;
+	ULONG RequiredLength = 0;
+	ULONG IoLength = 0;
+	BOOLEAN Result = TRUE;
 
 	DIO_FUNC_TRACE("Range count = %d\n", Count);
 	
@@ -282,7 +341,7 @@ DioPortIo(
 			return FALSE;
 		}
 
-		TotalLength += Ranges[i].EndAddress - Ranges[i].StartAddress + 1;
+		RequiredLength += Ranges[i].EndAddress - Ranges[i].StartAddress + 1;
 	}
 
 	if (!Buffer)
@@ -291,10 +350,10 @@ DioPortIo(
 		return TRUE;
 	}
 
-	if (BufferLength < TotalLength)
+	if (BufferLength < RequiredLength)
 	{
 		DIO_FUNC_TRACE("Insufficient buffer length (BufferLength %d, RequiredLength %d)\n", 
-			BufferLength, TotalLength);
+			BufferLength, RequiredLength);
 		return FALSE;
 	}
 
@@ -306,35 +365,44 @@ DioPortIo(
 	// Only one instance at most can access the port simultaneously.
 	KeAcquireSpinLock(&DiopPortReadWriteLock, &Irql);
 
+	DIO_IN_DEBUG_BREAKPOINT();
+
 	for (i = 0; i < Count; i++)
 	{
 		ULONG Length = Ranges[i].EndAddress - Ranges[i].StartAddress + 1;
 
 #ifdef DIO_TEST_MODE
 		if (Write)
-			DioDbgDumpBytes("Writing bytes", Length, 16, Buffer + TotalLength);
+			DioDbgDumpBytes("Writing bytes", Length, 16, Buffer + IoLength);
 		else
-			DioDbgDumpBytes("Reading bytes", Length, 16, Buffer + TotalLength);
+		{
+			ULONG j;
+
+			for (j = 0; j < Length; j++)
+				Buffer[IoLength + j] = ((j & 0x0f) << 4) | (j & 0x0f);
+
+			DioDbgDumpBytes("Reading bytes", Length, 16, Buffer + IoLength);
+		}
 #else
-		__writeeflags(__readeflags() & ~(1 << 10));
-
-		if (Write)
-			__outbytestring(Ranges[i].StartAddress, Buffer + TotalLength, Length);
-		else
-			__inbytestring(Ranges[i].StartAddress, Buffer + TotalLength, Length);
-
-		TotalLength += Length;
+		if (!DiopInternalPortIo(Ranges[i].StartAddress, Buffer + IoLength, Length, Write))
+		{
+			DIO_FUNC_TRACE(" *** WARNING: Unexpected I/O failure\n");
+			Result = FALSE;
+			break;
+		}
 #endif
+
+		IoLength += Length;
 	}
 
 	KeReleaseSpinLock(&DiopPortReadWriteLock, Irql);
 
-	DIO_FUNC_TRACE("Total %d bytes transferred\n", TotalLength);
+	DIO_FUNC_TRACE("Total %d bytes transferred\n", IoLength);
 
 	if (TransferredLength)
-		*TransferredLength = TotalLength;
+		*TransferredLength = IoLength;
 
-	return TRUE;
+	return Result;
 }
 
 
@@ -537,6 +605,8 @@ DioDispatchClose(
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
 
+	DioUnregister();
+
 	Irp->IoStatus.Status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = 0;
 
@@ -562,6 +632,7 @@ DioDispatchIoControl(
 	ULONG IoControlCode;
 	ULONG InputBufferLength;
 	ULONG OutputBufferLength;
+	ULONG DataOffset;
 	ULONG OutputActualLength;
 	DIO_PACKET *Packet;
 	NTSTATUS Status;
@@ -569,7 +640,7 @@ DioDispatchIoControl(
 
 	UNREFERENCED_PARAMETER(DeviceObject);
 
-//	DIO_IN_DEBUG_BREAKPOINT();
+	DIO_IN_DEBUG_BREAKPOINT();
 
 	CurrentProcess = PsGetCurrentProcess();
 	Status = STATUS_SUCCESS;
@@ -619,10 +690,12 @@ DioDispatchIoControl(
 			DIO_FUNC_TRACE("Port read request from process 0x%p (%d)\n", 
 				CurrentProcess, PsGetProcessId(CurrentProcess));
 
+			DataOffset = PACKET_PORT_IO_GET_LENGTH(Packet->PortIo.RangeCount);
+
 			if (!DioPortIo(Packet->PortIo.AddressRange, 
 							Packet->PortIo.RangeCount, 
 							PACKET_PORT_IO_GET_DATA_ADDRESS(&Packet->PortIo), 
-							OutputBufferLength, 
+							OutputBufferLength - DataOffset, 
 							&OutputActualLength, 
 							FALSE))
 			{
@@ -639,10 +712,12 @@ DioDispatchIoControl(
 			DIO_FUNC_TRACE("Port write request from process 0x%p (%d)\n", 
 				CurrentProcess, PsGetProcessId(CurrentProcess));
 
+			DataOffset = PACKET_PORT_IO_GET_LENGTH(Packet->PortIo.RangeCount);
+
 			if (!DioPortIo(Packet->PortIo.AddressRange, 
 							Packet->PortIo.RangeCount, 
 							PACKET_PORT_IO_GET_DATA_ADDRESS(&Packet->PortIo), 
-							InputBufferLength, 
+							InputBufferLength - DataOffset, 
 							NULL, 
 							TRUE))
 			{
