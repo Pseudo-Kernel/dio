@@ -3,10 +3,14 @@
 #include <ntstrsafe.h>
 #include "../Include/dioctl.h"
 
-#define	DIO_DENY_CONVENTIONAL_PORT_ACCESS		// To deny the conventional port access
-#define	DIO_SUPPORT_UNLOAD						// To support driver unload
-#define DIO_IGNORE_BREAKPOINT					// This option overrides DIO_IN_DEBUG_BREAKPOINT() to do nothing.
-//#define DIO_TEST_MODE							// Define if you want to run with IOCTL test mode only. Real port I/O is not performed.
+//
+// Definitions for options to compile.
+//
+
+#define	__DIO_DENY_CONVENTIONAL_PORT_ACCESS		// To deny the conventional port access
+#define	__DIO_SUPPORT_UNLOAD					// To support driver unload
+#define __DIO_IGNORE_BREAKPOINT					// This option overrides DIO_IN_DEBUG_BREAKPOINT() to do nothing.
+//#define __DIO_IOCTL_TEST_MODE					// Define if you want to run with IOCTL test mode only. Real port I/O is not performed.
 
 // Port address range for maximum 640 (=128x5) channels. (640 channels for input, 640 channels for output)
 #define DIO_PORT_ADDRESS_START					0x7000
@@ -18,18 +22,26 @@ C_ASSERT(
 	DIO_PORT_ADDRESS_END < 0x10000);
 
 
+//
+// Global helper macros.
+//
+
 #define DIO_ALLOC(_size)						ExAllocatePoolWithTag(NonPagedPool, (_size), 'OIDp')
 #define DIO_FREE(_addr)							ExFreePoolWithTag((_addr), 'OIDp')
 
-#define	DIO_TRACE(_fmt, ...)					DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, (_fmt), __VA_ARGS__)
-#define	DIO_FUNC_TRACE(_fmt, ...)				DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, ("%s: " _fmt), __FUNCTION__, __VA_ARGS__)
+#define	DTRACE(_fmt, ...)						DioDbgTrace(TRUE, (_fmt), __VA_ARGS__)
+#define	DFTRACE(_fmt, ...)						DioDbgTrace(TRUE, ("%s: " _fmt), __FUNCTION__, __VA_ARGS__)
+#define	DTRACE_DBG(_fmt, ...)					DioDbgTrace(FALSE, (_fmt), __VA_ARGS__)
+#define	DFTRACE_DBG(_fmt, ...)					DioDbgTrace(FALSE, ("%s: " _fmt), __FUNCTION__, __VA_ARGS__)
 
-#define	DIO_ASSERT(_expr)	\
+
+#define	DASSERT(_expr) {	\
 	if (!(_expr)) {			\
 		__debugbreak();		\
-	}
+	}						\
+}
 
-#ifdef DIO_IGNORE_BREAKPOINT
+#ifdef __DIO_IGNORE_BREAKPOINT
 #define	DIO_IN_DEBUG_BREAKPOINT()
 #else
 #define	DIO_IN_DEBUG_BREAKPOINT() {		\
@@ -38,7 +50,6 @@ C_ASSERT(
 	}									\
 }
 #endif
-
 
 
 //
@@ -56,7 +67,9 @@ KSPIN_LOCK DiopPortReadWriteLock;
 KSPIN_LOCK DiopForceUnregisterLock;
 volatile PEPROCESS DiopRegisteredProcess = NULL;
 
-#ifdef DIO_DENY_CONVENTIONAL_PORT_ACCESS
+DIO_CONFIGURATION_BLOCK DiopConfigurationBlock;
+
+#ifdef __DIO_DENY_CONVENTIONAL_PORT_ACCESS
 /**
  *	@brief	Predefined range of well-known port address.
  *
@@ -70,6 +83,35 @@ DIO_PORT_RANGE DiopConventionalPortAddressRangeListForDeny[] = {
 };
 #endif
 
+
+
+VOID
+DioDbgTrace(
+	IN BOOLEAN ForceOutput, 
+	IN PSZ Format, 
+	...)
+/**
+ *	@brief	Prints the debug string.
+ *	
+ *	Note that this function only prints if configuration bit DIO_CFGB_SHOW_DEBUG_OUTPUT is set.
+ *
+ *	@param	[in] ForceOutput			Forces debug string output regardless of configuration bit.
+ *	@param	[in] Format					Printf-like format ASCII string.
+ *	@param	[in] ...					Parameter list.
+ *	@return								None.
+ *	
+ */
+{
+	va_list Args;
+
+	if (!ForceOutput && 
+		!(DiopConfigurationBlock.ConfigurationBits & DIO_CFGB_SHOW_DEBUG_OUTPUT))
+		return;
+
+	va_start(Args, Format);
+	vDbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, Format, Args);
+	va_end(Args);
+}
 
 
 //
@@ -111,7 +153,7 @@ DioDbgDumpBytes(
 		RemainingTextLength -= 3;
 	}
 
-	DIO_TRACE("%s\n => %s\n", Message, Text);
+	DTRACE("%s\n => %s\n", Message, Text);
 }
 
 BOOLEAN
@@ -132,7 +174,7 @@ DioTestPortRange(
 	if (StartAddress > EndAddress)
 		return FALSE;
 
-#ifdef DIO_DENY_CONVENTIONAL_PORT_ACCESS
+#ifdef __DIO_DENY_CONVENTIONAL_PORT_ACCESS
 	for (i = 0; i < ARRAYSIZE(DiopConventionalPortAddressRangeListForDeny); i++)
 	{
 		DIO_PORT_RANGE *AddressRange = DiopConventionalPortAddressRangeListForDeny + i;
@@ -169,6 +211,41 @@ DiopValidatePacketBuffer(
 
 	switch (IoControlCode)
 	{
+	case DIO_IOCTL_READ_CONFIGURATION:
+		//
+		// Input: Packet->ReadWriteConfiguration.Version
+		// Output: Packet->ReadWriteConfiguration
+		//
+
+		if (InputBufferLength < sizeof(Packet->ReadWriteConfiguration.Version))
+			return FALSE;
+
+		if (Packet->ReadWriteConfiguration.Version != DIO_DRIVER_CONFIGURATION_VERSION1)
+			return FALSE;
+
+		if (OutputBufferLength < sizeof(Packet->ReadWriteConfiguration))
+			return FALSE;
+		break;
+
+	case DIO_IOCTL_WRITE_CONFIGURATION:
+		//
+		// Input: Packet->ReadWriteConfiguration
+		// Output: Packet->ReadWriteConfiguration
+		//
+
+		if (InputBufferLength < sizeof(Packet->ReadWriteConfiguration.Version))
+			return FALSE;
+
+		if (Packet->ReadWriteConfiguration.Version != DIO_DRIVER_CONFIGURATION_VERSION1)
+			return FALSE;
+
+		if (InputBufferLength < sizeof(Packet->ReadWriteConfiguration))
+			return FALSE;
+
+		if (OutputBufferLength < sizeof(Packet->ReadWriteConfiguration))
+			return FALSE;
+		break;
+
 	case DIO_IOCTL_READ_PORT:
 	case DIO_IOCTL_WRITE_PORT:
 		{
@@ -177,26 +254,26 @@ DiopValidatePacketBuffer(
 			ULONG RequiredInputLength = 0;
 			ULONG RequiredOutputLength = 0;
 
-			DIO_FUNC_TRACE("InputBufferLength %d, OutputBufferLength %d\n", InputBufferLength, OutputBufferLength);
+			DFTRACE_DBG("InputBufferLength %d, OutputBufferLength %d\n", InputBufferLength, OutputBufferLength);
 
 			RequiredInputLength = sizeof(Packet->PortIo);
 			if (InputBufferLength < RequiredInputLength)
 			{
-				DIO_FUNC_TRACE("RequiredInputLength %d\n", RequiredInputLength);
+				DFTRACE_DBG("RequiredInputLength %d\n", RequiredInputLength);
 				return FALSE;
 			}
 
 			RangeCount = Packet->PortIo.RangeCount;
 			if (RangeCount > DIO_MAXIMUM_PORT_IO_REQUEST)
 			{
-				DIO_FUNC_TRACE("RangeCount %d\n", RangeCount);
+				DFTRACE_DBG("RangeCount %d\n", RangeCount);
 				return FALSE;
 			}
 
 			RequiredInputLength += RangeCount * sizeof(DIO_PORT_RANGE);
 			if (InputBufferLength < RequiredInputLength)
 			{
-				DIO_FUNC_TRACE("RequiredInputLength %d\n", RequiredInputLength);
+				DFTRACE_DBG("RequiredInputLength %d\n", RequiredInputLength);
 				return FALSE;
 			}
 
@@ -215,7 +292,7 @@ DiopValidatePacketBuffer(
 			// Data length cannot be equal or bigger than 64K.
 			if (DataLength > 0x10000)
 			{
-				DIO_FUNC_TRACE("DataLength (%d) must be less than 64K\n", DataLength);
+				DFTRACE_DBG("DataLength (%d) must be less than 64K\n", DataLength);
 				return FALSE;
 			}
 
@@ -235,14 +312,14 @@ DiopValidatePacketBuffer(
 			if (InputBufferLength < RequiredInputLength || 
 				OutputBufferLength < RequiredOutputLength)
 			{
-				DIO_FUNC_TRACE("RequiredInputLength %d, RequiredOutputLength %d\n", RequiredInputLength, RequiredOutputLength);
+				DFTRACE_DBG("RequiredInputLength %d, RequiredOutputLength %d\n", RequiredInputLength, RequiredOutputLength);
 				return FALSE;
 			}
 		}
 		break;
 
 	default:
-		DIO_FUNC_TRACE("Unknown IOCTL\n");
+		DFTRACE_DBG("Unknown IOCTL\n");
 		return FALSE;
 	}
 
@@ -323,21 +400,21 @@ DioPortIo(
 	ULONG IoLength = 0;
 	BOOLEAN Result = TRUE;
 
-	DIO_FUNC_TRACE("Range count = %d\n", Count);
+	DFTRACE_DBG("Range count = %d\n", Count);
 	
 	if (Count > DIO_MAXIMUM_PORT_IO_REQUEST)
 	{
-		DIO_FUNC_TRACE("Maximum entry count exceeded\n");
+		DFTRACE_DBG("Maximum entry count exceeded\n");
 		return FALSE;
 	}
 
 	for (i = 0; i < Count; i++)
 	{
-		DIO_FUNC_TRACE("[%d] 0x%x - 0x%x\n", i, Ranges[i].StartAddress, Ranges[i].EndAddress);
+		DFTRACE_DBG("[%d] 0x%x - 0x%x\n", i, Ranges[i].StartAddress, Ranges[i].EndAddress);
 
 		if (!DioTestPortRange(Ranges[i].StartAddress, Ranges[i].EndAddress))
 		{
-			DIO_FUNC_TRACE("[%d] Inaccessible address range\n", i);
+			DFTRACE_DBG("[%d] Inaccessible address range\n", i);
 			return FALSE;
 		}
 
@@ -346,21 +423,22 @@ DioPortIo(
 
 	if (!Buffer)
 	{
-		DIO_FUNC_TRACE("Null buffer, transfer ignored\n");
+		DFTRACE_DBG("Null buffer, transfer ignored\n");
 		return TRUE;
 	}
 
 	if (BufferLength < RequiredLength)
 	{
-		DIO_FUNC_TRACE("Insufficient buffer length (BufferLength %d, RequiredLength %d)\n", 
+		DFTRACE_DBG("Insufficient buffer length (BufferLength %d, RequiredLength %d)\n", 
 			BufferLength, RequiredLength);
 		return FALSE;
 	}
 
 	if (Write)
-		DIO_FUNC_TRACE("Writing to the port...\n");
+		DFTRACE_DBG("Writing to the port...\n");
 	else
-		DIO_FUNC_TRACE("Reading from the port...\n");
+		DFTRACE_DBG("Reading from the port...\n");
+
 
 	// Only one instance at most can access the port simultaneously.
 	KeAcquireSpinLock(&DiopPortReadWriteLock, &Irql);
@@ -371,7 +449,7 @@ DioPortIo(
 	{
 		ULONG Length = Ranges[i].EndAddress - Ranges[i].StartAddress + 1;
 
-#ifdef DIO_TEST_MODE
+#ifdef __DIO_IOCTL_TEST_MODE
 		if (Write)
 			DioDbgDumpBytes("Writing bytes", Length, 16, Buffer + IoLength);
 		else
@@ -386,7 +464,7 @@ DioPortIo(
 #else
 		if (!DiopInternalPortIo(Ranges[i].StartAddress, Buffer + IoLength, Length, Write))
 		{
-			DIO_FUNC_TRACE(" *** WARNING: Unexpected I/O failure\n");
+			DFTRACE_DBG(" *** WARNING: Unexpected I/O failure\n");
 			Result = FALSE;
 			break;
 		}
@@ -397,7 +475,7 @@ DioPortIo(
 
 	KeReleaseSpinLock(&DiopPortReadWriteLock, Irql);
 
-	DIO_FUNC_TRACE("Total %d bytes transferred\n", IoLength);
+	DFTRACE_DBG("Total %d bytes transferred\n", IoLength);
 
 	if (TransferredLength)
 		*TransferredLength = IoLength;
@@ -405,6 +483,18 @@ DioPortIo(
 	return Result;
 }
 
+BOOLEAN
+DioIsRegistered(
+	VOID)
+/**
+ *	@brief	Returns the result whether the caller process is registered or not.
+ *	
+ *	@return								Non-zero if caller is already registered.
+ *	
+ */
+{
+	return (BOOLEAN)(DiopRegisteredProcess == PsGetCurrentProcess());
+}
 
 BOOLEAN
 DioRegisterSelf(
@@ -419,18 +509,18 @@ DioRegisterSelf(
 	PEPROCESS CurrentProcess = PsGetCurrentProcess();
 	PEPROCESS RegisteredProcess = NULL;
 
-	RegisteredProcess = (PEPROCESS)_InterlockedCompareExchangePointer((PVOID *)&DiopRegisteredProcess, (PVOID)CurrentProcess, 0);
+	RegisteredProcess = (PEPROCESS)InterlockedCompareExchangePointer((PVOID *)&DiopRegisteredProcess, (PVOID)CurrentProcess, 0);
 
 	if (RegisteredProcess != NULL && RegisteredProcess != CurrentProcess)
 	{
-		DIO_FUNC_TRACE("Failed to register %d because it is already registered\n", 
+		DFTRACE("Failed to register %d because it is already registered\n", 
 			PsGetProcessId(CurrentProcess));
 		return FALSE;
 	}
 
 	ObfReferenceObject(CurrentProcess);
 
-	DIO_FUNC_TRACE("Registered %d\n", PsGetProcessId(CurrentProcess));
+	DFTRACE("Registered %d\n", PsGetProcessId(CurrentProcess));
 
 	return TRUE;
 }
@@ -448,14 +538,14 @@ DioUnregister(
 	PEPROCESS RegisteredProcess = NULL;
 	PEPROCESS CurrentProcess = PsGetCurrentProcess();
 	
-	RegisteredProcess = (PEPROCESS)_InterlockedCompareExchangePointer((PVOID *)&DiopRegisteredProcess, 0, (PVOID)CurrentProcess);
+	RegisteredProcess = (PEPROCESS)InterlockedCompareExchangePointer((PVOID *)&DiopRegisteredProcess, 0, (PVOID)CurrentProcess);
 	if (!RegisteredProcess)
 	{
-		DIO_FUNC_TRACE("Failed to unregister because no process is registered\n");
+		DFTRACE("Failed to unregister because no process is registered\n");
 		return FALSE;
 	}
 
-	DIO_FUNC_TRACE("Unregistered %d\n", PsGetProcessId(RegisteredProcess));
+	DFTRACE("Unregistered %d\n", PsGetProcessId(RegisteredProcess));
 
 	ObfDereferenceObject(RegisteredProcess);
 	return TRUE;
@@ -476,7 +566,7 @@ DioForceUnregister(
 	BOOLEAN Unregistered;
 	PEPROCESS RegisteredProcess;
 
-//	DIO_FUNC_TRACE("Trying to unregister %d\n", UnregisterProcessId);
+//	DFTRACE("Trying to unregister %d\n", UnregisterProcessId);
 
 	// Acquire the lock so following code is not executed simultaneously.
 	KeAcquireSpinLock(&DiopForceUnregisterLock, &Irql);
@@ -492,7 +582,7 @@ DioForceUnregister(
 			ObfDereferenceObject(RegisteredProcess);
 
 			// We don't need barrier, use xchg instead
-			_InterlockedExchangePointer((volatile PVOID *)&DiopRegisteredProcess, 0);
+			InterlockedExchangePointer((volatile PVOID *)&DiopRegisteredProcess, 0);
 
 			Unregistered = TRUE;
 		}
@@ -501,7 +591,7 @@ DioForceUnregister(
 	KeReleaseSpinLock(&DiopForceUnregisterLock, Irql);
 
 	if (Unregistered)
-		DIO_FUNC_TRACE("Unregistered %d\n", UnregisterProcessId);
+		DFTRACE("Unregistered %d\n", UnregisterProcessId);
 
 	return Unregistered;
 }
@@ -578,7 +668,7 @@ DioDispatchCreate(
 
 	if (!DioRegisterSelf())
 	{
-		DIO_FUNC_TRACE("Process 0x%p is already registered\n", DiopRegisteredProcess);
+		DFTRACE("Process 0x%p is already registered\n", DiopRegisteredProcess);
 		return STATUS_ACCESS_DENIED;
 	}
 
@@ -606,6 +696,29 @@ DioDispatchClose(
 	UNREFERENCED_PARAMETER(DeviceObject);
 
 	DioUnregister();
+
+	Irp->IoStatus.Status = STATUS_SUCCESS;
+	Irp->IoStatus.Information = 0;
+
+	IofCompleteRequest(Irp, IO_NO_INCREMENT);
+
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS
+DioDispatchCleanup(
+	IN PDEVICE_OBJECT DeviceObject, 
+	IN PIRP Irp)
+/**
+ *	@brief	Dispatch routine for IRP_MJ_CLEANUP.
+ *	
+ *	@param	[in] DeviceObject			Device object.
+ *	@param	[in] Irp					Irp object.
+ *	@return								STATUS_SUCCESS always.
+ *	
+ */
+{
+	UNREFERENCED_PARAMETER(DeviceObject);
 
 	Irp->IoStatus.Status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = 0;
@@ -651,13 +764,20 @@ DioDispatchIoControl(
 	OutputBufferLength = IoStackLocation->Parameters.DeviceIoControl.OutputBufferLength;
 	OutputActualLength = 0;
 
-	DIO_FUNC_TRACE("IOCTL from process %d\n", PsGetProcessId(CurrentProcess));
-
 	do
 	{
 		//
-		// 1. Make sure that we're using buffered IOCTL.
+		// 1. Make sure that caller is already registered and using buffered IOCTL.
 		//
+
+		if (!DioIsRegistered())
+		{
+			DFTRACE("Process %d is not allowed\n", PsGetProcessId(CurrentProcess));
+			Status = STATUS_ACCESS_DENIED;
+			break;
+		}
+
+		DFTRACE_DBG("IOCTL from process %d\n", PsGetProcessId(CurrentProcess));
 
 		if (METHOD_FROM_CTL_CODE(IoControlCode) != METHOD_BUFFERED)
 		{
@@ -673,7 +793,7 @@ DioDispatchIoControl(
 		Packet = (DIO_PACKET *)Irp->AssociatedIrp.SystemBuffer;
 		if (!DiopValidatePacketBuffer(Packet, InputBufferLength, OutputBufferLength, IoControlCode))
 		{
-			DIO_FUNC_TRACE("Buffer validation failed\n");
+			DFTRACE_DBG("Buffer validation failed\n");
 			Status = STATUS_INVALID_PARAMETER;
 			break;
 		}
@@ -685,9 +805,29 @@ DioDispatchIoControl(
 
 		switch (IoControlCode)
 		{
+		case DIO_IOCTL_READ_CONFIGURATION:
+			// Read driver configuration
+			DFTRACE_DBG("Read driver configuration\n");
+			if (Packet->ReadWriteConfiguration.Version == DIO_DRIVER_CONFIGURATION_VERSION1)
+			{
+				Packet->ReadWriteConfiguration.ConfigurationBlock = DiopConfigurationBlock;
+				OutputActualLength = sizeof(Packet->ReadWriteConfiguration);
+			}
+			break;
+
+		case DIO_IOCTL_WRITE_CONFIGURATION:
+			// Write driver configuration
+			DFTRACE_DBG("Write driver configuration\n");
+			if (Packet->ReadWriteConfiguration.Version == DIO_DRIVER_CONFIGURATION_VERSION1)
+			{
+				DiopConfigurationBlock = Packet->ReadWriteConfiguration.ConfigurationBlock;
+				OutputActualLength = sizeof(Packet->ReadWriteConfiguration);
+			}
+			break;
+
 		case DIO_IOCTL_READ_PORT:
 			// Input from the port.
-			DIO_FUNC_TRACE("Port read request from process 0x%p (%d)\n", 
+			DFTRACE_DBG("Port read request from process 0x%p (%d)\n", 
 				CurrentProcess, PsGetProcessId(CurrentProcess));
 
 			DataOffset = PACKET_PORT_IO_GET_LENGTH(Packet->PortIo.RangeCount);
@@ -699,7 +839,7 @@ DioDispatchIoControl(
 							&OutputActualLength, 
 							FALSE))
 			{
-				DIO_FUNC_TRACE("I/O failed\n");
+				DFTRACE_DBG("I/O failed\n");
 				Status = STATUS_UNSUCCESSFUL;
 				break;
 			}
@@ -709,7 +849,7 @@ DioDispatchIoControl(
 
 		case DIO_IOCTL_WRITE_PORT:
 			// Output to the port.
-			DIO_FUNC_TRACE("Port write request from process 0x%p (%d)\n", 
+			DFTRACE_DBG("Port write request from process 0x%p (%d)\n", 
 				CurrentProcess, PsGetProcessId(CurrentProcess));
 
 			DataOffset = PACKET_PORT_IO_GET_LENGTH(Packet->PortIo.RangeCount);
@@ -721,7 +861,7 @@ DioDispatchIoControl(
 							NULL, 
 							TRUE))
 			{
-				DIO_FUNC_TRACE("I/O failed\n");
+				DFTRACE_DBG("I/O failed\n");
 				Status = STATUS_UNSUCCESSFUL;
 				break;
 			}
@@ -759,8 +899,8 @@ DioDriverUnload(
  *	
  */
 {
-#ifdef DIO_SUPPORT_UNLOAD
-	DIO_FUNC_TRACE("Shutdowning...\n");
+#ifdef __DIO_SUPPORT_UNLOAD
+	DFTRACE("Shutdowning...\n");
 
 	IoDeleteSymbolicLink(&DiopDosDeviceName);
 	IoDeleteDevice(DiopDeviceObject);
@@ -769,10 +909,10 @@ DioDriverUnload(
 
 	DioUnregister();
 
-	DIO_FUNC_TRACE("Byebye!\n\n");
+	DFTRACE("Byebye!\n\n");
 
 #else
-	DIO_FUNC_TRACE("*** STOP! ***\n\n");
+	DFTRACE("*** STOP! ***\n\n");
 	__debugbreak();
 #endif
 }
@@ -801,9 +941,11 @@ DriverEntry(
 
 	UNREFERENCED_PARAMETER(RegistryPath);
 
-	DIO_TRACE(" ********** DIO board I/O helper driver ********** \n");
-	DIO_TRACE("Last built " __DATE__ " " __TIME__ "\n\n");
-	DIO_FUNC_TRACE("Initializing...\n");
+	DTRACE(" ############ DIO board I/O helper driver ############ \n");
+	DTRACE(" Last built " __DATE__ " " __TIME__ "\n\n");
+	DTRACE(" ##################################################### \n\n");
+
+	DFTRACE("Initializing...\n");
 
 	RtlInitUnicodeString(&DiopDeviceName, L"\\Device\\Dioport");
 	RtlInitUnicodeString(&DiopDosDeviceName, L"\\DosDevices\\Dioport");
@@ -811,7 +953,7 @@ DriverEntry(
 	Status = IoCreateDevice(DriverObject, 0, &DiopDeviceName, FILE_DEVICE_UNKNOWN, 0, FALSE, &DeviceObject);
 	if (!NT_SUCCESS(Status))
 	{
-		DIO_FUNC_TRACE("IoCreateDevice failed\n");
+		DFTRACE("IoCreateDevice failed\n");
 		return Status;
 	}
 
@@ -819,7 +961,7 @@ DriverEntry(
 	if (!NT_SUCCESS(Status))
 	{
 		IoDeleteDevice(DeviceObject);
-		DIO_FUNC_TRACE("IoCreateSymbolicLink failed\n");
+		DFTRACE("IoCreateSymbolicLink failed\n");
 		return Status;
 	}
 
@@ -829,7 +971,8 @@ DriverEntry(
 	DriverObject->MajorFunction[IRP_MJ_CREATE] = DioDispatchCreate;
 	DriverObject->MajorFunction[IRP_MJ_CLOSE] = DioDispatchClose;
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DioDispatchIoControl;
-#ifdef DIO_SUPPORT_UNLOAD
+	DriverObject->MajorFunction[IRP_MJ_CLEANUP] = DioDispatchCleanup;
+#ifdef __DIO_SUPPORT_UNLOAD
 	DriverObject->DriverUnload = DioDriverUnload;
 #else
 	DriverObject->DriverUnload = NULL;
@@ -841,9 +984,9 @@ DriverEntry(
 
 	Status = PsSetCreateProcessNotifyRoutine(DiopCreateProcessNotifyRoutine, FALSE);
 	if (!NT_SUCCESS(Status))
-		DIO_FUNC_TRACE("WARNING - Failed to register notify routine (0x%08lx)\n", Status);
+		DFTRACE("WARNING - Failed to register notify routine (0x%08lx)\n", Status);
 
-	DIO_FUNC_TRACE("Initialization done.\n");
+	DFTRACE("Initialization done.\n");
 
 
 	//
@@ -855,6 +998,8 @@ DriverEntry(
 
 	DiopDriverObject = DriverObject;
 	DiopDeviceObject = DeviceObject;
+
+	DiopConfigurationBlock.ConfigurationBits = 0;
 
 	return Status;
 }

@@ -5,8 +5,10 @@
 // Port access structure for I/O control.
 //
 
-#define	DIO_IOFN_READ_PORT				0x801
-#define DIO_IOFN_WRITE_PORT				0x802
+#define	DIO_IOFN_READ_CONFIGURATION		0x801
+#define DIO_IOFN_WRITE_CONFIGURATION	0x802
+#define	DIO_IOFN_READ_PORT				0x803
+#define DIO_IOFN_WRITE_PORT				0x804
 
 #ifndef _NTDDK_
 
@@ -26,12 +28,18 @@
 
 #define	DIO_CREATE_IOCTL(_fn)					CTL_CODE(FILE_DEVICE_UNKNOWN, (_fn), METHOD_BUFFERED, FILE_ANY_ACCESS)
 
+#define DIO_IOCTL_READ_CONFIGURATION			DIO_CREATE_IOCTL(DIO_IOFN_READ_CONFIGURATION)
+#define DIO_IOCTL_WRITE_CONFIGURATION			DIO_CREATE_IOCTL(DIO_IOFN_WRITE_CONFIGURATION)
 #define	DIO_IOCTL_READ_PORT						DIO_CREATE_IOCTL(DIO_IOFN_READ_PORT)
 #define DIO_IOCTL_WRITE_PORT					DIO_CREATE_IOCTL(DIO_IOFN_WRITE_PORT)
 
 
 
 #pragma pack(push, 1)
+
+//
+// Structure for Port I/O.
+//
 
 #define DIO_MAXIMUM_PORT_IO_REQUEST				256
 
@@ -68,11 +76,46 @@ typedef struct _DIO_PACKET_PORT_IO {
 	( (PUCHAR)((_port_io)->AddressRange + (_port_io)->RangeCount) )
 
 
+
+
+//
+// Structure for Configuration Read/Write.
+//
+
+#define DIO_CFGB_SHOW_DEBUG_OUTPUT				0x000000001
+
+/**
+ *	@brief	Configuration structure.
+ *
+ *	Describes driver configuration.
+ */
+typedef	struct _DIO_CONFIGURATION_BLOCK {
+	ULONG ConfigurationBits;			// Combination of DIO_CFGB_XXX
+	ULONG Reserved[3];
+} DIO_CONFIGURATION_BLOCK;
+
+// Version of driver configuration data. higher 8bit means major version, lower 8bit means minor version.
+#define DIO_DRIVER_CONFIGURATION_VERSION1			0x0100
+
+/**
+ *	@brief	Configuration read/write packet structure.
+ *
+ *	Data format may vary depending on the value of Version field.
+ */
+typedef struct _DIO_PACKET_READ_WRITE_CONFIGURATION {
+	ULONG Version;					// DIO_DRIVER_CONFIGURATION_VERSION1
+	DIO_CONFIGURATION_BLOCK ConfigurationBlock;
+} DIO_PACKET_READ_WRITE_CONFIGURATION;
+
+
+
+
 /**
  *	@brief	IOCTL packet.
  */
 typedef union _DIO_PACKET {
 	DIO_PACKET_PORT_IO PortIo;
+	DIO_PACKET_READ_WRITE_CONFIGURATION ReadWriteConfiguration;
 } DIO_PACKET;
 
 #pragma pack(pop)

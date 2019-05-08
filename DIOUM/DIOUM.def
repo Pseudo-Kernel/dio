@@ -10,6 +10,8 @@ DioWritePortMultiple
 
 DioGetXorMask
 DioSetXorMask
+DioGetDriverConfiguration
+DioSetDriverConfiguration
 
 DioVfIoctlTest
 

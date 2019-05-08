@@ -221,6 +221,92 @@ DioSetXorMask(
 
 BOOL
 APIENTRY
+DioGetDriverConfiguration(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	OUT ULONG *ConfigurationBits)
+{
+	BOOL Result = FALSE;
+	ULONG ReturnedLength = 0;
+	DIO_PACKET_READ_WRITE_CONFIGURATION Packet;
+
+	if (!DiopValidateContext(Context))
+		return FALSE;
+
+	ZeroMemory(&Packet, sizeof(Packet));
+	Packet.Version = DIO_DRIVER_CONFIGURATION_VERSION1;
+
+	EnterCriticalSection(&Context->CriticalSection);
+
+	Result = DeviceIoControl(
+		Context->Handle, 
+		DIO_IOCTL_READ_CONFIGURATION, 
+		(PVOID)&Packet, 
+		sizeof(Packet.Version), 
+		(PVOID)&Packet, 
+		sizeof(Packet), 
+		&ReturnedLength, 
+		NULL);
+
+	if (Result && GetLastError() == ERROR_SUCCESS)
+	{
+		DTRACE("IOCTL succeeded with %d bytes returned\n", ReturnedLength);
+
+		if (ReturnedLength == sizeof(Packet))
+		{
+			*ConfigurationBits = Packet.ConfigurationBlock.ConfigurationBits;
+			Result = TRUE;
+		}
+	}
+
+	LeaveCriticalSection(&Context->CriticalSection);
+
+	return Result;
+}
+
+BOOL
+APIENTRY
+DioSetDriverConfiguration(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	IN ULONG ConfigurationBits)
+{
+	BOOL Result = FALSE;
+	ULONG ReturnedLength = 0;
+	DIO_PACKET_READ_WRITE_CONFIGURATION Packet;
+
+	if (!DiopValidateContext(Context))
+		return FALSE;
+
+	ZeroMemory(&Packet, sizeof(Packet));
+	Packet.Version = DIO_DRIVER_CONFIGURATION_VERSION1;
+	Packet.ConfigurationBlock.ConfigurationBits = ConfigurationBits;
+
+	EnterCriticalSection(&Context->CriticalSection);
+
+	Result = DeviceIoControl(
+		Context->Handle, 
+		DIO_IOCTL_WRITE_CONFIGURATION, 
+		(PVOID)&Packet, 
+		sizeof(Packet), 
+		(PVOID)&Packet, 
+		sizeof(Packet), 
+		&ReturnedLength, 
+		NULL);
+
+	if (Result && GetLastError() == ERROR_SUCCESS)
+	{
+		DTRACE("IOCTL succeeded with %d bytes returned\n", ReturnedLength);
+
+		if (ReturnedLength == sizeof(Packet))
+			Result = TRUE;
+	}
+
+	LeaveCriticalSection(&Context->CriticalSection);
+
+	return Result;
+}
+
+BOOL
+APIENTRY
 DioShutdown(
 	IN DIOUM_DRIVER_CONTEXT *Context)
 {

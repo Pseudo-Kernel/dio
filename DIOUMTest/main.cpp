@@ -10,7 +10,7 @@ void PrintBuffer(const char *Message, unsigned char *Buffer, int Length)
 {
 	printf("%s: \n", Message);
 
-	for (ULONG i = 0; i < Length; i++)
+	for (int i = 0; i < Length; i++)
 	{
 		printf("%02hhX ", Buffer[i]);
 		if ((i % 0x10) == 0x0f)
@@ -30,10 +30,26 @@ int wmain(int argc, wchar_t **wargv, wchar_t **wenvp)
 		{ 0x7000, 0x704f }, 
 	};
 
+	ULONG ConfigurationBit = 0;
+
 	if (!Context)
 	{
 		printf("DIO failed to initialize\n");
 		return -1;
+	}
+
+	if (argc > 1)
+	{
+		for (int i = 1; i < argc; i++)
+		{
+			if (!_wcsicmp(L"-dbg", wargv[i]))
+				ConfigurationBit |= DIOUM_CFGB_SHOW_DEBUG_OUTPUT;
+		}
+	}
+
+	if (!DioSetDriverConfiguration(Context, ConfigurationBit))
+	{
+		printf("WARNING: Failed to set driver configuration\n");
 	}
 
 	do

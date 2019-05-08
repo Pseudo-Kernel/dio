@@ -63,6 +63,22 @@ DioSetXorMask(
 	IN BOOL SetWrite);
 
 
+// Same as DIO_CFGB_XXX.
+#define DIOUM_CFGB_SHOW_DEBUG_OUTPUT				0x000000001
+
+BOOL
+APIENTRY
+DioGetDriverConfiguration(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	OUT ULONG *ConfigurationBits);
+
+BOOL
+APIENTRY
+DioSetDriverConfiguration(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	IN ULONG ConfigurationBits);
+
+
 
 BOOL
 APIENTRY
