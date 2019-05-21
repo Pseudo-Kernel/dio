@@ -24,6 +24,7 @@ int wmain(int argc, wchar_t **wargv, wchar_t **wenvp)
 {
 	UCHAR Buffer[0x100];
 	ULONG ReturnedLength;
+	BOOL WaitCtrlC = FALSE;
 
 	DIOUM_DRIVER_CONTEXT *Context = DioInitialize();
 	DIOUM_PORT_RANGE PortRange[] = {
@@ -44,6 +45,8 @@ int wmain(int argc, wchar_t **wargv, wchar_t **wenvp)
 		{
 			if (!_wcsicmp(L"-dbg", wargv[i]))
 				ConfigurationBit |= DIOUM_CFGB_SHOW_DEBUG_OUTPUT;
+			else if (!_wcsicmp(L"-cc", wargv[i]))
+				WaitCtrlC = TRUE;
 		}
 	}
 
@@ -84,9 +87,12 @@ int wmain(int argc, wchar_t **wargv, wchar_t **wenvp)
 	if (Context)
 		DioShutdown(Context);
 
-	printf("Press Ctrl+C to exit...\n");
 
-	Sleep(INFINITE);
+	if (WaitCtrlC)
+	{
+		printf("Press Ctrl+C to exit...\n");
+		Sleep(INFINITE);
+	}
 
 	return 0;
 }

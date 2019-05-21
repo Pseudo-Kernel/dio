@@ -7,6 +7,9 @@
 #include "../Include/dioum.h"
 #include "dioum_internal.h"
 
+#define DFTRACE(_fmt, ...)			DTRACE(__FUNCTION__ ": " _fmt, __VA_ARGS__)
+
+
 VOID
 CDECL
 DTRACE(
@@ -249,7 +252,7 @@ DioGetDriverConfiguration(
 
 	if (Result && GetLastError() == ERROR_SUCCESS)
 	{
-		DTRACE("IOCTL succeeded with %d bytes returned\n", ReturnedLength);
+		DFTRACE("IOCTL succeeded with %d bytes returned\n", ReturnedLength);
 
 		if (ReturnedLength == sizeof(Packet))
 		{
@@ -294,7 +297,7 @@ DioSetDriverConfiguration(
 
 	if (Result && GetLastError() == ERROR_SUCCESS)
 	{
-		DTRACE("IOCTL succeeded with %d bytes returned\n", ReturnedLength);
+		DFTRACE("IOCTL succeeded with %d bytes returned\n", ReturnedLength);
 
 		if (ReturnedLength == sizeof(Packet))
 			Result = TRUE;
@@ -391,7 +394,7 @@ DioReadPortMultiple(
 
 		if (Result && GetLastError() == ERROR_SUCCESS)
 		{
-			DTRACE("IOCTL succeeded with %d bytes returned\n", ReturnedLength);
+			DFTRACE("IOCTL succeeded with %d bytes returned\n", ReturnedLength);
 
 			if (ReturnedLength == HeaderLength + DataLength)
 			{
@@ -402,7 +405,7 @@ DioReadPortMultiple(
 			}
 			else
 			{
-				DTRACE("Length mismatched, assuming failed\n");
+				DFTRACE("Length mismatched, assuming failed\n");
 				Result = FALSE;
 			}
 		}
@@ -451,7 +454,7 @@ DioWritePortMultiple(
 
 		if (Result && GetLastError() == ERROR_SUCCESS)
 		{
-			DTRACE("IOCTL succeeded with %d bytes returned\n", ReturnedLength);
+			DFTRACE("IOCTL succeeded with %d bytes returned\n", ReturnedLength);
 
 			if (ReturnedLength == HeaderLength)
 			{
@@ -460,7 +463,7 @@ DioWritePortMultiple(
 			}
 			else
 			{
-				DTRACE("Length mismatched, assuming failed\n");
+				DFTRACE("Length mismatched, assuming failed\n");
 				Result = FALSE;
 			}
 		}
@@ -518,7 +521,7 @@ DioVfIoctlTest(
 
 		InputBufferLength = rand() % 8192;
 		OutputBufferLength = rand() % 8192;
-		DTRACE("InputBufferLength %d, OutputBufferLength %d\n", InputBufferLength, OutputBufferLength);
+		DFTRACE("InputBufferLength %d, OutputBufferLength %d\n", InputBufferLength, OutputBufferLength);
 
 		Result = DeviceIoControl(
 			Context->Handle, 
@@ -530,7 +533,7 @@ DioVfIoctlTest(
 			&ReturnedLength, 
 			NULL);
 
-		DTRACE("Read: Result %d, ReturnedLength %d, LastError %d\n", 
+		DFTRACE("Read: Result %d, ReturnedLength %d, LastError %d\n", 
 			Result, ReturnedLength, GetLastError());
 
 //		Result = DeviceIoControl(

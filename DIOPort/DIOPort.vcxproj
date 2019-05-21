@@ -91,8 +91,8 @@ copy "$(ProjectDir)objchk_win7_amd64\amd64\$(TargetName).sys" "$(OutDir)$(Target
 
 "$(SolutionDir)Tools\CertDelete.exe" KMDTestCertStore
 set errorlevel=0
-makecert -r -pe -ss KMDTestCertStore -n "CN=test.com(Test)" "$(OutDir)\testcert.cer"
-signtool sign /a /v /s KMDTestCertStore /n test.com(Test) /t http://timestamp.verisign.com/scripts/timestamp.dll "$(OutDir)$(TargetName).sys"
+makecert -r -pe -ss KMDTestCertStore -n "CN=test.com(Test)" "$(OutDir)\testcert.cer" -a sha256
+signtool sign /s KMDTestCertStore /fd sha256 /n test.com(Test) /tr "http://sha256timestamp.ws.symantec.com/sha256/timestamp" "$(OutDir)$(TargetName).sys"
 
 copy dioport.inf "$(OutDir)" /y
 inf2cat "/driver:$(OutDir)." /os:7_X64,7_X86
@@ -107,7 +107,7 @@ copy "$(ProjectDir)objchk_win7_amd64\amd64\$(TargetName).sys" "$(OutDir)$(Target
 
 "$(SolutionDir)Tools\CertDelete.exe" KMDTestCertStore
 set errorlevel=0
-makecert -r -pe -ss KMDTestCertStore -n "CN=test.com(Test)" "$(OutDir)\testcert.cer"
+makecert -r -pe -ss KMDTestCertStore -n "CN=test.com(Test)" "$(OutDir)\testcert.cer" -a sha256
 signtool sign /a /v /s KMDTestCertStore /n test.com(Test) /t http://timestamp.verisign.com/scripts/timestamp.dll "$(OutDir)$(TargetName).sys"
 
 copy dioport.inf "$(OutDir)" /y

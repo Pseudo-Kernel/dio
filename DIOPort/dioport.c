@@ -64,7 +64,7 @@ UNICODE_STRING DiopDosDeviceName;
 
 KSPIN_LOCK DiopPortReadWriteLock;
 
-KSPIN_LOCK DiopForceUnregisterLock;
+KSPIN_LOCK DiopProcessLock;
 volatile PEPROCESS DiopRegisteredProcess = NULL;
 
 DIO_CONFIGURATION_BLOCK DiopConfigurationBlock;
@@ -508,21 +508,28 @@ DioRegisterSelf(
 {
 	PEPROCESS CurrentProcess = PsGetCurrentProcess();
 	PEPROCESS RegisteredProcess = NULL;
+	BOOLEAN Result = FALSE;
+	HANDLE CurrentProcessId = PsGetProcessId(CurrentProcess);
+	KIRQL Irql;
+
+	KeAcquireSpinLock(&DiopProcessLock, &Irql);
 
 	RegisteredProcess = (PEPROCESS)InterlockedCompareExchangePointer((PVOID *)&DiopRegisteredProcess, (PVOID)CurrentProcess, 0);
-
-	if (RegisteredProcess != NULL && RegisteredProcess != CurrentProcess)
+	if (!RegisteredProcess)
 	{
-		DFTRACE("Failed to register %d because it is already registered\n", 
-			PsGetProcessId(CurrentProcess));
-		return FALSE;
+		ObfReferenceObject(CurrentProcess);
+		Result = TRUE;
 	}
 
-	ObfReferenceObject(CurrentProcess);
+	KeReleaseSpinLock(&DiopProcessLock, Irql);
+	
+	if (Result)
+		DFTRACE("Registered %d\n", CurrentProcessId);
+	else
+		DFTRACE("Failed to register %d because it is already registered\n", CurrentProcessId);
 
-	DFTRACE("Registered %d\n", PsGetProcessId(CurrentProcess));
 
-	return TRUE;
+	return Result;
 }
 
 BOOLEAN
@@ -537,18 +544,28 @@ DioUnregister(
 {
 	PEPROCESS RegisteredProcess = NULL;
 	PEPROCESS CurrentProcess = PsGetCurrentProcess();
-	
+	BOOLEAN Result = FALSE;
+	HANDLE RegisteredProcessId;
+	KIRQL Irql;
+
+	KeAcquireSpinLock(&DiopProcessLock, &Irql);
+
 	RegisteredProcess = (PEPROCESS)InterlockedCompareExchangePointer((PVOID *)&DiopRegisteredProcess, 0, (PVOID)CurrentProcess);
-	if (!RegisteredProcess)
+	if (RegisteredProcess == CurrentProcess)
 	{
-		DFTRACE("Failed to unregister because no process is registered\n");
-		return FALSE;
+		RegisteredProcessId = PsGetProcessId(RegisteredProcess);
+		ObfDereferenceObject(RegisteredProcess);
+		Result = TRUE;
 	}
 
-	DFTRACE("Unregistered %d\n", PsGetProcessId(RegisteredProcess));
+	KeReleaseSpinLock(&DiopProcessLock, Irql);
 
-	ObfDereferenceObject(RegisteredProcess);
-	return TRUE;
+	if (Result)
+		DFTRACE("Unregistered %d\n", RegisteredProcessId);
+	else
+		DFTRACE("Failed to unregister because current process is not in registered state\n");
+
+	return Result;
 }
 
 BOOLEAN
@@ -562,33 +579,32 @@ DioForceUnregister(
  *	
  */
 {
-	KIRQL Irql;
-	BOOLEAN Unregistered;
+	BOOLEAN Unregistered = FALSE;
 	PEPROCESS RegisteredProcess;
+	KIRQL Irql;
 
 //	DFTRACE("Trying to unregister %d\n", UnregisterProcessId);
 
 	// Acquire the lock so following code is not executed simultaneously.
-	KeAcquireSpinLock(&DiopForceUnregisterLock, &Irql);
+	KeAcquireSpinLock(&DiopProcessLock, &Irql);
 
-	Unregistered = FALSE;
-	RegisteredProcess = DiopRegisteredProcess;
+	RegisteredProcess = (PEPROCESS)InterlockedCompareExchangePointer((PVOID *)&DiopRegisteredProcess, 0, 0);
 
-	if (RegisteredProcess != NULL)
+	if (RegisteredProcess)
 	{
 		if (UnregisterProcessId == PsGetProcessId(RegisteredProcess))
 		{
+			// Use xchg instead
+			InterlockedExchangePointer((PVOID *)&DiopRegisteredProcess, 0);
+
 			// OK, dereference it
 			ObfDereferenceObject(RegisteredProcess);
-
-			// We don't need barrier, use xchg instead
-			InterlockedExchangePointer((volatile PVOID *)&DiopRegisteredProcess, 0);
 
 			Unregistered = TRUE;
 		}
 	}
 
-	KeReleaseSpinLock(&DiopForceUnregisterLock, Irql);
+	KeReleaseSpinLock(&DiopProcessLock, Irql);
 
 	if (Unregistered)
 		DFTRACE("Unregistered %d\n", UnregisterProcessId);
@@ -695,8 +711,6 @@ DioDispatchClose(
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
 
-	DioUnregister();
-
 	Irp->IoStatus.Status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = 0;
 
@@ -719,6 +733,8 @@ DioDispatchCleanup(
  */
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
+
+	DioUnregister();
 
 	Irp->IoStatus.Status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = 0;
@@ -750,6 +766,7 @@ DioDispatchIoControl(
 	DIO_PACKET *Packet;
 	NTSTATUS Status;
 	PEPROCESS CurrentProcess;
+	BOOLEAN Critical;
 
 	UNREFERENCED_PARAMETER(DeviceObject);
 
@@ -757,6 +774,7 @@ DioDispatchIoControl(
 
 	CurrentProcess = PsGetCurrentProcess();
 	Status = STATUS_SUCCESS;
+	Critical = FALSE;
 
 	IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
 	IoControlCode = IoStackLocation->Parameters.DeviceIoControl.IoControlCode;
@@ -774,6 +792,7 @@ DioDispatchIoControl(
 		{
 			DFTRACE("Process %d is not allowed\n", PsGetProcessId(CurrentProcess));
 			Status = STATUS_ACCESS_DENIED;
+			Critical = TRUE;
 			break;
 		}
 
@@ -782,6 +801,7 @@ DioDispatchIoControl(
 		if (METHOD_FROM_CTL_CODE(IoControlCode) != METHOD_BUFFERED)
 		{
 			Status = STATUS_NOT_SUPPORTED;
+			Critical = TRUE;
 			break;
 		}
 
@@ -884,6 +904,8 @@ DioDispatchIoControl(
 
 	IofCompleteRequest(Irp, IO_NO_INCREMENT);
 
+	if (Critical && !NT_SUCCESS(Status))
+		return Status;
 
 	return STATUS_SUCCESS;
 }
@@ -994,7 +1016,7 @@ DriverEntry(
 	//
 
 	KeInitializeSpinLock(&DiopPortReadWriteLock);
-	KeInitializeSpinLock(&DiopForceUnregisterLock);
+	KeInitializeSpinLock(&DiopProcessLock);
 
 	DiopDriverObject = DriverObject;
 	DiopDeviceObject = DeviceObject;
