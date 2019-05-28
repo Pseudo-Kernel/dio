@@ -8,8 +8,8 @@
 Signature = "$Windows NT$"
 Provider = %DIOPort.INFProvider%
 ClassGUID = {75BEC7D6-7F4E-4DAE-9A2B-B4D09B839B18}
-Class = PortIOService
-DriverVer = 05/04/2019,1.1.0.0
+Class = DIO
+DriverVer = 05/29/2019,1.2.1.0
 CatalogFile.NT = DIOPortx86.cat
 CatalogFile.NTamd64 = DIOPortx64.cat
 
@@ -34,10 +34,10 @@ DefaultDestDir = 12
 %DIOPort.Manufacturer% = DIOPort.Models,NT,NTamd64
 
 [DIOPort.Models.NT]
-%DIOPort.DeviceDesc% = DIOPort,ROOT\DIOPort
+%DIOPort.DeviceDesc% = DIOPort,%DIOPort.HWID%
 
 [DIOPort.Models.NTamd64]
-%DIOPort.DeviceDesc% = DIOPort,ROOT\DIOPort
+%DIOPort.DeviceDesc% = DIOPort,%DIOPort.HWID%
 
 ;
 ; Installation section
@@ -45,6 +45,28 @@ DefaultDestDir = 12
 
 [DIOPort]
 CopyFiles = DIOPort.CopyFiles
+LogConfig = DIOPort.LogConfig0, DIOPort.LogConfig1, DIOPort.LogConfig2, DIOPort.LogConfig3
+
+;[DIOPort.FactDef]
+;ConfigPriority = DESIRED
+;IOConfig = 7000-705f
+
+[DIOPort.LogConfig0]
+ConfigPriority = DESIRED
+IOConfig = 7000-705f
+
+[DIOPort.LogConfig1]
+ConfigPriority = HARDRECONFIG
+IOConfig = 60@7000-8fff%fff0
+
+[DIOPort.LogConfig2]
+ConfigPriority = HARDRECONFIG
+IOConfig = 60@9000-afff%fff0
+
+[DIOPort.LogConfig3]
+ConfigPriority = HARDRECONFIG
+IOConfig = 60@2000-bfff%fff0
+
 
 [DIOPort.Services]
 AddService = DIOPort,0x00000002,DIOPort.ServiceInstall
@@ -78,6 +100,7 @@ DIOPort.sys = 1,,        ; File for disk #1
 [Strings]
 DIOPort.INFProvider = "INF_Provider_Name"
 DIOPort.Manufacturer = "Manufacturer_Name"
-DIOPort.ClassDesc = "Port I/O Service"
-DIOPort.DeviceDesc = "Direct Port I/O Helper"
+DIOPort.HWID = "DETECTEDIsa\DIOPort"
+DIOPort.ClassDesc = "Digital I/O"
+DIOPort.DeviceDesc = "Digital I/O Channel Controller Board"
 DIOPort.DiskId1 = " Installation Disk #1"

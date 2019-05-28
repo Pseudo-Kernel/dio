@@ -1,69 +1,21 @@
 
+#define	INITGUID
+
 #include <ntddk.h>
 #include <ntstrsafe.h>
 #include "../Include/dioctl.h"
-
-//
-// Definitions for options to compile.
-//
-
-#define	__DIO_DENY_CONVENTIONAL_PORT_ACCESS		// To deny the conventional port access
-#define	__DIO_SUPPORT_UNLOAD					// To support driver unload
-#define __DIO_IGNORE_BREAKPOINT					// This option overrides DIO_IN_DEBUG_BREAKPOINT() to do nothing.
-//#define __DIO_IOCTL_TEST_MODE					// Define if you want to run with IOCTL test mode only. Real port I/O is not performed.
-
-// Port address range for maximum 640 (=128x5) channels. (640 channels for input, 640 channels for output)
-#define DIO_PORT_ADDRESS_START					0x7000
-#define DIO_PORT_ADDRESS_END					0x704f
-
-C_ASSERT(
-	DIO_PORT_ADDRESS_START < DIO_PORT_ADDRESS_END && 
-	DIO_PORT_ADDRESS_START < 0x10000 && 
-	DIO_PORT_ADDRESS_END < 0x10000);
-
-
-//
-// Global helper macros.
-//
-
-#define DIO_ALLOC(_size)						ExAllocatePoolWithTag(NonPagedPool, (_size), 'OIDp')
-#define DIO_FREE(_addr)							ExFreePoolWithTag((_addr), 'OIDp')
-
-#define	DTRACE(_fmt, ...)						DioDbgTrace(TRUE, (_fmt), __VA_ARGS__)
-#define	DFTRACE(_fmt, ...)						DioDbgTrace(TRUE, ("%s: " _fmt), __FUNCTION__, __VA_ARGS__)
-#define	DTRACE_DBG(_fmt, ...)					DioDbgTrace(FALSE, (_fmt), __VA_ARGS__)
-#define	DFTRACE_DBG(_fmt, ...)					DioDbgTrace(FALSE, ("%s: " _fmt), __FUNCTION__, __VA_ARGS__)
-
-
-#define	DASSERT(_expr) {	\
-	if (!(_expr)) {			\
-		__debugbreak();		\
-	}						\
-}
-
-#ifdef __DIO_IGNORE_BREAKPOINT
-#define	DIO_IN_DEBUG_BREAKPOINT()
-#else
-#define	DIO_IN_DEBUG_BREAKPOINT() {		\
-	if (!(*KdDebuggerNotPresent)) {		\
-		__debugbreak();					\
-	}									\
-}
-#endif
-
+#include "dioport.h"
 
 //
 // Global variables.
 //
 
+//	{75BEC7D6-7F4E-4DAE-9A2B-B4D09B839B18}
+DEFINE_GUID(DiopGuidDeviceClass, 0x75BEC7D6, 0x7F4E, 0x4DAE, 0x9A, 0x2B, 0xB4, 0xD0, 0x9B, 0x83, 0x9B, 0x18);
+
+HANDLE DiopRegKeyHandle = NULL;
 PDRIVER_OBJECT DiopDriverObject = NULL;
-PDEVICE_OBJECT DiopDeviceObject = NULL;
-
-UNICODE_STRING DiopDeviceName;
-UNICODE_STRING DiopDosDeviceName;
-
 KSPIN_LOCK DiopPortReadWriteLock;
-
 KSPIN_LOCK DiopProcessLock;
 volatile PEPROCESS DiopRegisteredProcess = NULL;
 
@@ -83,7 +35,13 @@ DIO_PORT_RANGE DiopConventionalPortAddressRangeListForDeny[] = {
 };
 #endif
 
+ULONG DiopHwPortRangeCount;
+DIO_PORT_RANGE DiopHwPortResources[DIO_MAXIMUM_PORT_RANGES];
 
+
+//
+// Utility functions.
+//
 
 VOID
 DioDbgTrace(
@@ -111,6 +69,349 @@ DioDbgTrace(
 	va_start(Args, Format);
 	vDbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, Format, Args);
 	va_end(Args);
+}
+
+PSZ
+DioPnpRtlLookupMinorFunctionName(
+	IN ULONG MinorFunction)
+{
+	#define	__TOSTR_INTERNAL(_s)				#_s
+	#define	__TOSTR(_s)							__TOSTR_INTERNAL(_s)
+	#define	__SWITCH_CASE_SELECT_STRING(_s)		case (_s): return #_s
+
+	switch (MinorFunction)
+	{
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_START_DEVICE                  );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_REMOVE_DEVICE         	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_REMOVE_DEVICE               	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_CANCEL_REMOVE_DEVICE        	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_STOP_DEVICE                 	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_STOP_DEVICE           	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_CANCEL_STOP_DEVICE          	 );
+
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_DEVICE_RELATIONS      	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_INTERFACE             	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_CAPABILITIES          	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_RESOURCES             	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_RESOURCE_REQUIREMENTS 	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_DEVICE_TEXT           	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_FILTER_RESOURCE_REQUIREMENTS	 );
+
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_READ_CONFIG                 	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_WRITE_CONFIG                	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_EJECT                       	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_SET_LOCK                    	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_ID                    	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_PNP_DEVICE_STATE      	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_BUS_INFORMATION       	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_DEVICE_USAGE_NOTIFICATION   	 );
+	__SWITCH_CASE_SELECT_STRING(IRP_MN_SURPRISE_REMOVAL            	 );
+
+	default:
+		return "UNKNOWN_PNP_MINOR";
+	}
+}
+
+
+NTSTATUS
+DioReadRegistryValue(
+	IN HANDLE KeyHandle, 
+	IN PWSTR ValueNameString, 
+	IN ULONG ExpectedValueType, 
+	IN OUT PVOID Value, 
+	IN ULONG ValueLength, 
+	OPTIONAL OUT ULONG *ResultLength)
+{
+	UNICODE_STRING ValueName;
+	NTSTATUS Status = STATUS_UNSUCCESSFUL;
+	KEY_VALUE_PARTIAL_INFORMATION *PartialInformation = NULL;
+	ULONG RequiredLength = sizeof(*PartialInformation);
+	ULONG PartialInformationLength = 0;
+	ULONG RetryCount = 0;
+
+	RtlInitUnicodeString(&ValueName, ValueNameString);
+
+	do
+	{
+		if (PartialInformation)
+			DIO_FREE(PartialInformation);
+
+		PartialInformationLength = RequiredLength;
+		PartialInformation = (KEY_VALUE_PARTIAL_INFORMATION *)DIO_ALLOC(PartialInformationLength);
+
+		if (PartialInformation)
+		{
+			Status = ZwQueryValueKey(KeyHandle, &ValueName, KeyValuePartialInformation, 
+				PartialInformation, PartialInformationLength, &RequiredLength);
+
+			if (Status != STATUS_BUFFER_TOO_SMALL && Status != STATUS_BUFFER_OVERFLOW)
+				break;
+		}
+
+	} while (!NT_SUCCESS(Status) && RetryCount++ < 10);
+
+	if (NT_SUCCESS(Status))
+	{
+		if (PartialInformation->Type != ExpectedValueType)
+			Status = STATUS_INVALID_PARAMETER;
+		else if (PartialInformation->DataLength > ValueLength)
+			Status = STATUS_BUFFER_TOO_SMALL;
+		else
+		{
+			// Copy to the caller-supplied buffer.
+			RtlCopyMemory(Value, PartialInformation->Data, PartialInformation->DataLength);
+
+			if (ResultLength)
+				*ResultLength = PartialInformation->DataLength;
+		}
+	}
+
+	// Finally free the buffer
+	if (PartialInformation)
+		DIO_FREE(PartialInformation);
+
+	return Status;
+}
+
+NTSTATUS
+DioOpenDriverParametersRegistry(
+	IN PUNICODE_STRING DriverRegistryPath, 
+	OUT HANDLE *RegistryKeyHandle)
+{
+	HANDLE KeyHandle;
+	HANDLE SubkeyHandle;
+	ULONG Disposition;
+	OBJECT_ATTRIBUTES ObjectAttributes;
+	UNICODE_STRING SubkeyName;
+	NTSTATUS Status;
+
+	// Must check IRQL = Passive level.
+	DASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+
+	DFTRACE("Opening registry key: %wZ\n", DriverRegistryPath);
+
+	InitializeObjectAttributes(&ObjectAttributes, DriverRegistryPath, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+	Status = ZwOpenKey(&KeyHandle, KEY_ALL_ACCESS, &ObjectAttributes);
+
+	DFTRACE("Status 0x%08lx\n", Status);
+	if (!NT_SUCCESS(Status))
+		return Status;
+
+	DFTRACE("Creating the subkey...\n");
+
+	RtlInitUnicodeString(&SubkeyName, L"Parameters");
+	InitializeObjectAttributes(&ObjectAttributes, &SubkeyName, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, KeyHandle, NULL);
+	Status = ZwCreateKey(&SubkeyHandle, KEY_ALL_ACCESS, &ObjectAttributes, 0, NULL, REG_OPTION_NON_VOLATILE, &Disposition);
+
+	// Close the root key because it is no longer used.
+	ZwClose(KeyHandle);
+
+	DFTRACE("Status 0x%08lx\n", Status);
+	if (!NT_SUCCESS(Status))
+		return Status;
+
+	*RegistryKeyHandle = SubkeyHandle;
+	
+	return Status;
+}
+
+NTSTATUS
+DioQueryDriverParameters(
+	IN HANDLE KeyHandle, 
+	OUT ULONG *AddressRangeCount, 
+	OUT DIO_PORT_RANGE *AddressRanges, 
+	IN ULONG AddressRangesLength, 
+	OUT ULONG *DeviceReported)
+{
+	NTSTATUS Status;
+
+	ULONG HwAddressRangeCount;
+	ULONG ResultLength;
+
+	// Must check IRQL = Passive level.
+	DASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+
+	Status = DioReadRegistryValue(KeyHandle, L"AddressRangeCount", REG_DWORD, &HwAddressRangeCount, sizeof(HwAddressRangeCount), NULL);
+	if (!NT_SUCCESS(Status))
+		return Status;
+
+	if (HwAddressRangeCount > DIO_MAXIMUM_PORT_RANGES)
+		return STATUS_UNSUCCESSFUL;
+
+	if (HwAddressRangeCount * sizeof(DIO_PORT_RANGE) > AddressRangesLength)
+		return STATUS_BUFFER_TOO_SMALL;
+
+	Status = DioReadRegistryValue(KeyHandle, L"AddressRanges", REG_BINARY, AddressRanges, AddressRangesLength, &ResultLength);
+
+	if (!NT_SUCCESS(Status))
+		return Status;
+
+	// DeviceReported [optional]
+	if (!NT_SUCCESS(
+			DioReadRegistryValue(KeyHandle, L"DeviceReported", REG_DWORD, DeviceReported, 
+				sizeof(*DeviceReported), &ResultLength)
+		))
+	{
+		*DeviceReported = 0;
+	}
+
+	*AddressRangeCount = HwAddressRangeCount;
+	
+	return Status;
+}
+
+//
+// Function for hardware resources.
+//
+
+NTSTATUS
+DioCmBuildResourceList(
+	IN ULONG AddressRangeCount, 
+	IN DIO_PORT_RANGE *AddressRanges, 
+	OUT CM_RESOURCE_LIST **ResourceList, 
+	OUT ULONG *ResourceListSize)
+{
+	CM_RESOURCE_LIST *List;
+	ULONG ListSize;
+	ULONG i;
+
+	// ResourceList
+	// + DescriptorList[]
+	//  + PartialResourceList.PartialDescriptors[]
+
+	if (AddressRangeCount > DIO_MAXIMUM_PORT_RANGES)
+		return STATUS_INVALID_PARAMETER;
+
+	ListSize = FIELD_OFFSET(CM_RESOURCE_LIST, List[0].PartialResourceList.PartialDescriptors[AddressRangeCount]);
+
+	List = (CM_RESOURCE_LIST *)DIO_ALLOC(ListSize);
+	if (!List)
+		return STATUS_INSUFFICIENT_RESOURCES;
+
+	//
+	// Build the our resource list.
+	// We have only one CM_FULL_RESOURCE_DESCRIPTOR.
+	//
+
+	List->Count = 1;
+	List->List[0].BusNumber = 0; //-1;
+	List->List[0].InterfaceType = Isa;
+
+	List->List[0].PartialResourceList.Revision = 1;
+	List->List[0].PartialResourceList.Version = 1;
+	List->List[0].PartialResourceList.Count = AddressRangeCount;
+
+	for (i = 0; i < AddressRangeCount; i++)
+	{
+		USHORT StartAddress = AddressRanges[i].StartAddress;
+		USHORT Length = AddressRanges[i].EndAddress - AddressRanges[i].StartAddress + 1;
+
+		DFTRACE("HwPortResource[%d]: 0x%04hx - 0x%04hx\n", i, AddressRanges[i].StartAddress, AddressRanges[i].EndAddress);
+
+		List->List[0].PartialResourceList.PartialDescriptors[i].Type = CmResourceTypePort;
+		List->List[0].PartialResourceList.PartialDescriptors[i].ShareDisposition = CmResourceShareDriverExclusive; //CmResourceShareDeviceShared
+		List->List[0].PartialResourceList.PartialDescriptors[i].Flags = CM_RESOURCE_PORT_IO;
+
+		// Do double type casting to prevent the sign-extension.
+		List->List[0].PartialResourceList.PartialDescriptors[i].u.Port.Start.QuadPart = (LONGLONG)(ULONGLONG)StartAddress;
+		List->List[0].PartialResourceList.PartialDescriptors[i].u.Port.Length = Length;
+	}
+
+	*ResourceList = List;
+	*ResourceListSize = ListSize;
+
+	return STATUS_SUCCESS;
+}
+
+VOID
+DioCmFreeResourceList(
+	IN CM_RESOURCE_LIST *ResourceList)
+{
+	DIO_FREE(ResourceList);
+}
+
+NTSTATUS
+DioPnpClaimHardwareResources(
+	IN PDRIVER_OBJECT DriverObject, 
+	IN HANDLE ParameterKeyHandle, 
+	IN ULONG AddressRangeCount, 
+	IN DIO_PORT_RANGE *AddressRanges, 
+	OUT PDEVICE_OBJECT *PhysicalDeviceObject)
+{
+	NTSTATUS Status;
+	CM_RESOURCE_LIST *ResourceList;
+	ULONG ResourceListSize;
+	BOOLEAN ConflictDetected = FALSE;
+
+	// https://www.e-reading.club/chapter.php/147098/415/Cant_-_Writing_Windows_WDM_Device_Drivers.html
+
+	// ResourceList
+	// + DescriptorList[]
+	//  + PartialResourceList.PartialDescriptors[]
+
+	Status = DioCmBuildResourceList(AddressRangeCount, AddressRanges, &ResourceList, &ResourceListSize);
+	if (!NT_SUCCESS(Status))
+		return Status;
+
+	DIO_IN_DEBUG_BREAKPOINT();
+
+	// Claim our hardware resources for use
+	DFTRACE("Claiming hardware resources...\n");
+	Status = IoReportResourceForDetection(DriverObject, ResourceList, ResourceListSize, NULL, NULL, 0, &ConflictDetected);
+
+	// If there was no conflict, report our device to PnP manager.
+	if (NT_SUCCESS(Status) && !ConflictDetected)
+	{
+		PDEVICE_OBJECT DeviceObjectOwnedByPnP = NULL;
+
+		DFTRACE("Claiming succeeded with no conflict\n");
+		DFTRACE("Reporting our device to PnP manager...\n");
+
+		Status = IoReportDetectedDevice(DriverObject, Isa, -1, -1, ResourceList, NULL, TRUE, &DeviceObjectOwnedByPnP);
+
+		DFTRACE("Status 0x%08lx\n", Status);
+
+		if (!NT_SUCCESS(Status))
+		{
+			CM_RESOURCE_LIST NullResourceList;
+			NTSTATUS UnclaimStatus;
+
+			DFTRACE("Failed to report the detected device. Unclaiming resources...\n");
+
+			RtlZeroMemory(&NullResourceList, sizeof(NullResourceList));
+			NullResourceList.Count = 0;
+
+			UnclaimStatus = IoReportResourceForDetection(DriverObject, &NullResourceList, sizeof(NullResourceList), NULL, NULL, 0, &ConflictDetected);
+			if (!NT_SUCCESS(UnclaimStatus))
+				DFTRACE("WARNING - Unclaim status 0x%08lx\n", UnclaimStatus);
+		}
+		else
+		{
+			ULONG DeviceReported = 1;
+			NTSTATUS WriteStatus = RtlWriteRegistryValue(RTL_REGISTRY_HANDLE, (PCWSTR)ParameterKeyHandle, L"DeviceReported", REG_DWORD, &DeviceReported, sizeof(DeviceReported));
+
+			if(!NT_SUCCESS(WriteStatus))
+				DFTRACE("WARNING - Cannot write device report state (0x%08lx)\n", WriteStatus);
+
+			*PhysicalDeviceObject = DeviceObjectOwnedByPnP;
+		}
+	}
+
+	DioCmFreeResourceList(ResourceList);
+
+	return Status;
+}
+
+NTSTATUS
+DioPnpUnclaimHardwareResources(
+	IN PDRIVER_OBJECT DriverObject)
+{
+	BOOLEAN ConflictDetected = FALSE;
+	CM_RESOURCE_LIST ResourceList;
+
+	RtlZeroMemory(&ResourceList, sizeof(ResourceList));
+	ResourceList.Count = 0;
+	return IoReportResourceForDetection(DriverObject, &ResourceList, sizeof(ResourceList), NULL, NULL, 0, &ConflictDetected);
 }
 
 
@@ -184,6 +485,28 @@ DioTestPortRange(
 			return FALSE;
 	}
 #endif
+
+	return TRUE;
+}
+
+
+BOOLEAN
+DiopIsConflictingPortRange(
+	IN ULONG AddressRangeCount, 
+	IN DIO_PORT_RANGE *AddressRanges)
+{
+	ULONG i, j;
+
+	for (i = 0; i < AddressRangeCount; i++)
+	{
+		for (j = i + 1; j < AddressRangeCount; j++)
+		{
+			if (DIO_IS_CONFLICTING_ADDRESSES(
+				AddressRanges[i].StartAddress, AddressRanges[i].EndAddress, 
+				AddressRanges[j].StartAddress, AddressRanges[j].EndAddress))
+				return FALSE;
+		}
+	}
 
 	return TRUE;
 }
@@ -264,7 +587,7 @@ DiopValidatePacketBuffer(
 			}
 
 			RangeCount = Packet->PortIo.RangeCount;
-			if (RangeCount > DIO_MAXIMUM_PORT_IO_REQUEST)
+			if (RangeCount > DIO_MAXIMUM_PORT_RANGES)
 			{
 				DFTRACE_DBG("RangeCount %d\n", RangeCount);
 				return FALSE;
@@ -402,7 +725,7 @@ DioPortIo(
 
 	DFTRACE_DBG("Range count = %d\n", Count);
 	
-	if (Count > DIO_MAXIMUM_PORT_IO_REQUEST)
+	if (Count > DIO_MAXIMUM_PORT_RANGES)
 	{
 		DFTRACE_DBG("Maximum entry count exceeded\n");
 		return FALSE;
@@ -660,10 +983,19 @@ DioDispatchNotSupported(
  *	
  */
 {
-	UNREFERENCED_PARAMETER(DeviceObject);
-	UNREFERENCED_PARAMETER(Irp);
+	NTSTATUS Status = STATUS_NOT_SUPPORTED;
+	PIO_STACK_LOCATION IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
 
-	return STATUS_NOT_SUPPORTED;
+	UNREFERENCED_PARAMETER(DeviceObject);
+
+	DFTRACE("Major %d, Minor %d\n", IoStackLocation->MajorFunction, IoStackLocation->MinorFunction);
+
+	Irp->IoStatus.Status = Status;
+	Irp->IoStatus.Information = 0;
+
+	IofCompleteRequest(Irp, IO_NO_INCREMENT);
+
+	return Status;
 }
 
 
@@ -680,20 +1012,22 @@ DioDispatchCreate(
  *	
  */
 {
+	NTSTATUS Status = STATUS_SUCCESS;
+
 	UNREFERENCED_PARAMETER(DeviceObject);
 
 	if (!DioRegisterSelf())
 	{
 		DFTRACE("Process 0x%p is already registered\n", DiopRegisteredProcess);
-		return STATUS_ACCESS_DENIED;
+		Status = STATUS_ACCESS_DENIED;
 	}
 
-	Irp->IoStatus.Status = STATUS_SUCCESS;
+	Irp->IoStatus.Status = Status;
 	Irp->IoStatus.Information = 0;
 
 	IofCompleteRequest(Irp, IO_NO_INCREMENT);
 
-	return STATUS_SUCCESS;
+	return Status;
 }
 
 NTSTATUS
@@ -924,12 +1258,19 @@ DioDriverUnload(
 #ifdef __DIO_SUPPORT_UNLOAD
 	DFTRACE("Shutdowning...\n");
 
-	IoDeleteSymbolicLink(&DiopDosDeviceName);
-	IoDeleteDevice(DiopDeviceObject);
+//	// Detach our FDO from the PDO first.
+//	IoDetachDevice(DiopPhysicalDeviceObject);
+//
+//	IoDeleteSymbolicLink(&DiopDosDeviceName);
+//	IoDeleteDevice(DiopDeviceObject);
 
 	PsSetCreateProcessNotifyRoutine(DiopCreateProcessNotifyRoutine, TRUE);
 
 	DioUnregister();
+
+//	DioPnpUnclaimHardwareResources(DriverObject);
+
+	ZwClose(DiopRegKeyHandle);
 
 	DFTRACE("Byebye!\n\n");
 
@@ -939,6 +1280,145 @@ DioDriverUnload(
 #endif
 }
 
+NTSTATUS
+DioAddDevice(
+	IN PDRIVER_OBJECT DriverObject, 
+	IN PDEVICE_OBJECT PhysicalDeviceObject)
+{
+	NTSTATUS Status = STATUS_UNSUCCESSFUL;
+	PDEVICE_OBJECT DeviceObject = NULL;
+	PDEVICE_OBJECT LowerLevelDeviceObject = NULL;
+	BOOLEAN SymbolicLinkCreated = FALSE;
+	BOOLEAN InterfaceRegistered = FALSE;
+	UNICODE_STRING DeviceName;
+	UNICODE_STRING DosDeviceName;
+	UNICODE_STRING PhysicalDeviceSymbolicLinkName;
+
+	DFTRACE("DriverObject 0x%p, PhysicalDeviceObject 0x%p\n", DriverObject, PhysicalDeviceObject);
+
+	DIO_IN_DEBUG_BREAKPOINT();
+
+	RtlInitUnicodeString(&DeviceName, L"\\Device\\Dioport");
+	RtlInitUnicodeString(&DosDeviceName, L"\\DosDevices\\Dioport");
+
+	do
+	{
+		DIO_DEVICE_EXTENSION *DeviceExtension;
+
+		//
+		// Create our new FDO.
+		//
+
+		Status = IoCreateDevice(DriverObject, sizeof(DIO_DEVICE_EXTENSION), &DeviceName, FILE_DEVICE_UNKNOWN, 0, FALSE, &DeviceObject);
+		if (!NT_SUCCESS(Status))
+		{
+			DFTRACE("IoCreateDevice failed\n");
+			break;
+		}
+
+
+		//
+		// Create the symbolic link for FDO.
+		//
+
+		Status = IoCreateSymbolicLink(&DosDeviceName, &DeviceName);
+		if (!NT_SUCCESS(Status))
+		{
+			DFTRACE("IoCreateSymbolicLink failed\n");
+			break;
+		}
+
+		SymbolicLinkCreated = TRUE;
+
+
+		//
+		// Attach our FDO to PnP PDO.
+		//
+
+		LowerLevelDeviceObject = IoAttachDeviceToDeviceStack(DeviceObject, PhysicalDeviceObject);
+		DFTRACE("IoAttachDeviceToDeviceStack returned 0x%p\n", LowerLevelDeviceObject);
+		if (!LowerLevelDeviceObject)
+		{
+			DTRACE("Failed to attach device\n");
+			break;
+		}
+
+
+		//
+		// Register device interface so that application can open with it.
+		//
+
+		Status = IoRegisterDeviceInterface(PhysicalDeviceObject, &DiopGuidDeviceClass, NULL, &PhysicalDeviceSymbolicLinkName);
+		if (!NT_SUCCESS(Status))
+		{
+			DFTRACE("Failed to register device interface\n");
+			break;
+		}
+
+		DFTRACE("PhysicalDeviceSymbolicLinkName: %wZ\n", &PhysicalDeviceSymbolicLinkName);
+		InterfaceRegistered = TRUE;
+
+		Status = IoSetDeviceInterfaceState(&PhysicalDeviceSymbolicLinkName, TRUE);
+		if (!NT_SUCCESS(Status))
+		{
+			DFTRACE("Failed to set device interface state\n");
+			break;
+		}
+
+
+		//
+		// Initialize our device extension which contains per-device specific data.
+		//
+
+		DeviceExtension = (DIO_DEVICE_EXTENSION *)DeviceObject->DeviceExtension;
+
+		RtlZeroMemory(DeviceExtension, sizeof(*DeviceExtension));
+
+		DeviceExtension->LowerLevelDeviceObject = LowerLevelDeviceObject;
+		DeviceExtension->PhysicalDeviceObject = PhysicalDeviceObject;
+		DeviceExtension->PhysicalDeviceSymbolicLinkName = PhysicalDeviceSymbolicLinkName;
+		DeviceExtension->FunctionDeviceName = DeviceName;
+		DeviceExtension->FunctionDeviceSymbolicLinkName = DosDeviceName;
+		DeviceExtension->DeviceState = 0;
+		DeviceExtension->PortRangeCount = 0;
+		
+		IoInitializeRemoveLock(&DeviceExtension->RemoveLock, 'pOID', 0, 0);
+
+
+		//
+		// Clear the initialization flag.
+		//
+
+		DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+
+#if 0
+		//
+		// PnP manager does not call IRP_MN_START_DEVICE to PDO because PnP manager assumes 
+		// that device is already started (where PDO is created by IoReportDetectedDevice()).
+		//
+		// Invalidating the device state will make PnP manager to call IRP_MN_START_DEVICE.
+		//
+
+//		DeviceExtension->DeviceState = PNP_DEVICE_RESOURCE_REQUIREMENTS_CHANGED;
+//		IoInvalidateDeviceState(PhysicalDeviceObject);
+#endif
+
+		return STATUS_SUCCESS;
+
+	} while (FALSE);
+
+	if (InterfaceRegistered)
+		RtlFreeUnicodeString(&PhysicalDeviceSymbolicLinkName);
+
+	if (DeviceObject)
+		IoDeleteDevice(DeviceObject);
+
+	if (SymbolicLinkCreated)
+		IoDeleteSymbolicLink(&DosDeviceName);
+
+
+	return STATUS_UNSUCCESSFUL;
+}
 
 //
 // Driver main entry.
@@ -957,11 +1437,12 @@ DriverEntry(
  *	
  */
 {
-	NTSTATUS Status;
-	PDEVICE_OBJECT DeviceObject;
+	NTSTATUS Status = STATUS_UNSUCCESSFUL;
+	HANDLE KeyHandle = NULL;
+	PDEVICE_OBJECT PhysicalDeviceObject = NULL;
+	BOOLEAN ResourceClaimed = FALSE;
+	ULONG DeviceReported = 0;
 	ULONG i;
-
-	UNREFERENCED_PARAMETER(RegistryPath);
 
 	DTRACE(" ############ DIO board I/O helper driver ############ \n");
 	DTRACE(" Last built " __DATE__ " " __TIME__ "\n\n");
@@ -969,36 +1450,90 @@ DriverEntry(
 
 	DFTRACE("Initializing...\n");
 
-	RtlInitUnicodeString(&DiopDeviceName, L"\\Device\\Dioport");
-	RtlInitUnicodeString(&DiopDosDeviceName, L"\\DosDevices\\Dioport");
+	DIO_IN_DEBUG_BREAKPOINT();
 
-	Status = IoCreateDevice(DriverObject, 0, &DiopDeviceName, FILE_DEVICE_UNKNOWN, 0, FALSE, &DeviceObject);
+#if 0
+	do
+	{
+		//
+		// In our driver, initialization process is shown below:
+		//
+		// 0. Our driver is loaded and I/O manager calls DriverEntry() in the system thread context.
+		// 1. Check the registry value (DeviceReported) is non-zero or not.
+		// 2. Do the following only if the value (DeviceReported) is zero or non-existent:
+		//   2-a. Claim the hardware resources by calling IoReportResourceForDetection().
+		//   2-b. After the resources are successfully claimed, call IoReportDetectedDevice() to report to the PnP manager.
+		//        The PnP manager will create its own PDO for our FDO. Note that PDO is not ours. PnP manager manages it.
+		//   2-c. Write to the registry value (DeviceReported) so that driver can recognize the device is already reported.
+		// 3. Register IRP_MJ_XXX, DriverUnload, AddDevice routine to the driver object.
+		// 4. After the DriverEntry returns, I/O manager calls AddDevice.
+		// 5. AddDevice() does the following:
+		//   5-a. Create the FDO by calling IoCreateDevice().
+		//   5-b. Attach our FDO to PDO by calling IoAttachDeviceToDeviceStack().
+		//   5-c. Register device interface of PDO so it can be opened by application.
+		// 6. Since we have reported our device by using IoReportDetectedDevice(), 
+		//    The I/O manager will not call PnP IRP_MN_START_DEVICE.
+		//    To issue IRP_MN_START_DEVICE, we'll use IoInvalidateDeviceState().
+		//    The driver must handle the PnP IRP_MN_QUERY_PNP_DEVICE_STATE to work properly.
+		// 
+
+		Status = DioOpenDriverParametersRegistry(RegistryPath, &KeyHandle);
+		if (!NT_SUCCESS(Status))
+		{
+			DFTRACE("Failed to open driver parameters\n");
+			break;
+		}
+
+		Status = DioQueryDriverParameters(KeyHandle, &DiopHwPortRangeCount, DiopHwPortResources, sizeof(DiopHwPortResources), &DeviceReported);
+		if (!NT_SUCCESS(Status))
+		{
+			DFTRACE("Failed to query the driver parameters\n");
+			break;
+		}
+
+	//	if (!DeviceReported)
+	//	{
+	//		// This is the first time to claim hardware resources
+	//		Status = DioPnpClaimHardwareResources(DriverObject, KeyHandle, DiopHwPortRangeCount, DiopHwPortResources, &PhysicalDeviceObject);
+	//		if (!NT_SUCCESS(Status))
+	//		{
+	//			DFTRACE("Failed to claim hardware resources\n");
+	//			break;
+	//		}
+	//
+	//		ResourceClaimed = TRUE;
+	//
+	//	}
+	} while (FALSE);
+
 	if (!NT_SUCCESS(Status))
 	{
-		DFTRACE("IoCreateDevice failed\n");
+		if (KeyHandle)
+			ZwClose(KeyHandle);
+
+	//	if (ResourceClaimed)
+	//		DioPnpUnclaimHardwareResources(DriverObject);
+
 		return Status;
 	}
+#endif
 
-	Status = IoCreateSymbolicLink(&DiopDosDeviceName, &DiopDeviceName);
-	if (!NT_SUCCESS(Status))
-	{
-		IoDeleteDevice(DeviceObject);
-		DFTRACE("IoCreateSymbolicLink failed\n");
-		return Status;
-	}
 
-	for (i = 0; i < IRP_MJ_MAXIMUM_FUNCTION; i++)
+	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 		DriverObject->MajorFunction[i] = DioDispatchNotSupported;
 
 	DriverObject->MajorFunction[IRP_MJ_CREATE] = DioDispatchCreate;
 	DriverObject->MajorFunction[IRP_MJ_CLOSE] = DioDispatchClose;
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DioDispatchIoControl;
 	DriverObject->MajorFunction[IRP_MJ_CLEANUP] = DioDispatchCleanup;
+	DriverObject->MajorFunction[IRP_MJ_PNP] = DioDispatchPnP;
+	DriverObject->DriverExtension->AddDevice = DioAddDevice;
 #ifdef __DIO_SUPPORT_UNLOAD
 	DriverObject->DriverUnload = DioDriverUnload;
 #else
 	DriverObject->DriverUnload = NULL;
 #endif
+
 
 	//
 	// Register our notify routine.
@@ -1019,10 +1554,9 @@ DriverEntry(
 	KeInitializeSpinLock(&DiopProcessLock);
 
 	DiopDriverObject = DriverObject;
-	DiopDeviceObject = DeviceObject;
+	DiopRegKeyHandle = KeyHandle;
 
 	DiopConfigurationBlock.ConfigurationBits = 0;
 
 	return Status;
 }
-

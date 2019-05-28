@@ -13,5 +13,6 @@ DioSetXorMask
 DioGetDriverConfiguration
 DioSetDriverConfiguration
 
+DioVfTest
 DioVfIoctlTest
 

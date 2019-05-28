@@ -41,7 +41,7 @@
 // Structure for Port I/O.
 //
 
-#define DIO_MAXIMUM_PORT_IO_REQUEST				256
+#define DIO_MAXIMUM_PORT_RANGES				256
 
 /**
  *	@brief	Port range structure.
@@ -52,6 +52,13 @@ typedef struct _DIO_PORT_RANGE {
 	USHORT StartAddress;	//!< Starting port address.
 	USHORT EndAddress;		//!< Ending port address.
 } DIO_PORT_RANGE;
+
+
+#define DIO_IS_CONFLICTING_ADDRESSES(_s1, _e1, _s2, _e2)	(					\
+	((USHORT)(_s1)) <= ((USHORT)(_s2)) && ((USHORT)(_s2)) <= ((USHORT)(_e1)) || \
+	((USHORT)(_s1)) <= ((USHORT)(_e2)) && ((USHORT)(_e2)) <= ((USHORT)(_e1))	\
+)
+
 
 #pragma warning(push)
 #pragma warning(disable: 4200)

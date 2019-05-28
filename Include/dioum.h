@@ -79,6 +79,15 @@ DioSetDriverConfiguration(
 	IN ULONG ConfigurationBits);
 
 
+#define DIOUM_VF_IO_READ							0x000000001
+#define DIOUM_VF_IO_WRITE							0x000000002
+
+BOOL
+APIENTRY
+DioVfTest(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	IN ULONG TestFlag, 
+	IN ULONG TestCount);
 
 BOOL
 APIENTRY

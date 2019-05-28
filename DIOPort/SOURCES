@@ -1,4 +1,9 @@
 TARGETNAME=DIOPort
 TARGETPATH=obj
 TARGETTYPE=DRIVER
-SOURCES=dioport.c
+
+SOURCES=		\
+	dioport.c	\
+	pnp.c
+
+

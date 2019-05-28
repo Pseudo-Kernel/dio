@@ -340,7 +340,7 @@ DioRegisterPortAddressRange(
 	if (!DiopValidateContext(Context))
 		return FALSE;
 
-	if (AddressRangeCount > DIO_MAXIMUM_PORT_IO_REQUEST)
+	if (AddressRangeCount > DIO_MAXIMUM_PORT_RANGES)
 		return FALSE;
 
 	EnterCriticalSection(&Context->CriticalSection);
@@ -472,6 +472,28 @@ DioWritePortMultiple(
 	LeaveCriticalSection(&Context->CriticalSection);
 
 	return Result;
+}
+
+BOOL
+APIENTRY
+DioVfTest(
+	IN DIOUM_DRIVER_CONTEXT *Context, 
+	IN ULONG TestFlag, 
+	IN ULONG TestCount)
+{
+	UCHAR Buffer[24] = { 0 };
+	ULONG Dummy;
+
+	if (!DiopValidateContext(Context))
+		return FALSE;
+
+	if (TestFlag & DIOUM_VF_IO_READ)
+		ReadFile(Context->Handle, Buffer, sizeof(Buffer), &Dummy, NULL);
+
+	if (TestFlag & DIOUM_VF_IO_WRITE)
+		WriteFile(Context->Handle, Buffer, sizeof(Buffer), &Dummy, NULL);
+
+	return TRUE;
 }
 
 BOOL

@@ -187,6 +187,7 @@ inf2cat "/driver:$(OutDir)." /os:7_X64,7_X86
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dioport.c" />
+    <ClCompile Include="pnp.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
