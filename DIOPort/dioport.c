@@ -18,25 +18,9 @@ PDRIVER_OBJECT DiopDriverObject = NULL;
 KSPIN_LOCK DiopPortReadWriteLock;
 KSPIN_LOCK DiopProcessLock;
 volatile PEPROCESS DiopRegisteredProcess = NULL;
+BOOLEAN DiopBreakOnKdAttached = TRUE;
 
 DIO_CONFIGURATION_BLOCK DiopConfigurationBlock;
-
-#ifdef __DIO_DENY_CONVENTIONAL_PORT_ACCESS
-/**
- *	@brief	Predefined range of well-known port address.
- *
- *	We only allow maximum 640 channels here.
- */
-DIO_PORT_RANGE DiopConventionalPortAddressRangeListForDeny[] = {
-	{ 0x0000, DIO_PORT_ADDRESS_START - 1 }, 
-	/* Do not deny DIO board address 0x7000 ~ 0x7000 + 0x10 * BoardCount,
-	   where the BoardCount = 5 (total 640 channels) */
-	{ DIO_PORT_ADDRESS_END + 1, 0xffff }, 
-};
-#endif
-
-ULONG DiopHwPortRangeCount;
-DIO_PORT_RANGE DiopHwPortResources[DIO_MAXIMUM_PORT_RANGES];
 
 
 //
@@ -75,41 +59,41 @@ PSZ
 DioPnpRtlLookupMinorFunctionName(
 	IN ULONG MinorFunction)
 {
-	#define	__TOSTR_INTERNAL(_s)				#_s
-	#define	__TOSTR(_s)							__TOSTR_INTERNAL(_s)
-	#define	__SWITCH_CASE_SELECT_STRING(_s)		case (_s): return #_s
+	#define	__CASE_SELECT_STRING(_s)		case (_s): return #_s
 
 	switch (MinorFunction)
 	{
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_START_DEVICE                  );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_REMOVE_DEVICE         	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_REMOVE_DEVICE               	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_CANCEL_REMOVE_DEVICE        	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_STOP_DEVICE                 	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_STOP_DEVICE           	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_CANCEL_STOP_DEVICE          	 );
+	__CASE_SELECT_STRING(IRP_MN_START_DEVICE					 );
+	__CASE_SELECT_STRING(IRP_MN_QUERY_REMOVE_DEVICE         	 );
+	__CASE_SELECT_STRING(IRP_MN_REMOVE_DEVICE               	 );
+	__CASE_SELECT_STRING(IRP_MN_CANCEL_REMOVE_DEVICE        	 );
+	__CASE_SELECT_STRING(IRP_MN_STOP_DEVICE                 	 );
+	__CASE_SELECT_STRING(IRP_MN_QUERY_STOP_DEVICE           	 );
+	__CASE_SELECT_STRING(IRP_MN_CANCEL_STOP_DEVICE          	 );
 
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_DEVICE_RELATIONS      	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_INTERFACE             	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_CAPABILITIES          	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_RESOURCES             	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_RESOURCE_REQUIREMENTS 	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_DEVICE_TEXT           	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_FILTER_RESOURCE_REQUIREMENTS	 );
+	__CASE_SELECT_STRING(IRP_MN_QUERY_DEVICE_RELATIONS      	 );
+	__CASE_SELECT_STRING(IRP_MN_QUERY_INTERFACE             	 );
+	__CASE_SELECT_STRING(IRP_MN_QUERY_CAPABILITIES          	 );
+	__CASE_SELECT_STRING(IRP_MN_QUERY_RESOURCES             	 );
+	__CASE_SELECT_STRING(IRP_MN_QUERY_RESOURCE_REQUIREMENTS 	 );
+	__CASE_SELECT_STRING(IRP_MN_QUERY_DEVICE_TEXT           	 );
+	__CASE_SELECT_STRING(IRP_MN_FILTER_RESOURCE_REQUIREMENTS	 );
 
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_READ_CONFIG                 	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_WRITE_CONFIG                	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_EJECT                       	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_SET_LOCK                    	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_ID                    	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_PNP_DEVICE_STATE      	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_QUERY_BUS_INFORMATION       	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_DEVICE_USAGE_NOTIFICATION   	 );
-	__SWITCH_CASE_SELECT_STRING(IRP_MN_SURPRISE_REMOVAL            	 );
+	__CASE_SELECT_STRING(IRP_MN_READ_CONFIG                 	 );
+	__CASE_SELECT_STRING(IRP_MN_WRITE_CONFIG                	 );
+	__CASE_SELECT_STRING(IRP_MN_EJECT                       	 );
+	__CASE_SELECT_STRING(IRP_MN_SET_LOCK                    	 );
+	__CASE_SELECT_STRING(IRP_MN_QUERY_ID                    	 );
+	__CASE_SELECT_STRING(IRP_MN_QUERY_PNP_DEVICE_STATE      	 );
+	__CASE_SELECT_STRING(IRP_MN_QUERY_BUS_INFORMATION       	 );
+	__CASE_SELECT_STRING(IRP_MN_DEVICE_USAGE_NOTIFICATION   	 );
+	__CASE_SELECT_STRING(IRP_MN_SURPRISE_REMOVAL            	 );
 
 	default:
 		return "UNKNOWN_PNP_MINOR";
 	}
+
+	#undef __CASE_SELECT_STRING
 }
 
 
@@ -330,6 +314,7 @@ DioCmFreeResourceList(
 	DIO_FREE(ResourceList);
 }
 
+DECLSPEC_DEPRECATED
 NTSTATUS
 DioPnpClaimHardwareResources(
 	IN PDRIVER_OBJECT DriverObject, 
@@ -402,6 +387,7 @@ DioPnpClaimHardwareResources(
 	return Status;
 }
 
+DECLSPEC_DEPRECATED
 NTSTATUS
 DioPnpUnclaimHardwareResources(
 	IN PDRIVER_OBJECT DriverObject)
@@ -460,12 +446,16 @@ DioDbgDumpBytes(
 BOOLEAN
 DioTestPortRange(
 	IN USHORT StartAddress, 
-	IN USHORT EndAddress)
+	IN USHORT EndAddress, 
+	IN DIO_PORT_RANGE *AddressRangesAvailable, 
+	IN ULONG AddressRangeCount)
 /**
  *	@brief	Tests the address range is accessible or not.
  *	
  *	@param	[in] StartAddress			Starting port address.
  *	@param	[in] EndAddress				Ending port address.
+ *	@param	[in] AddressRangesAvailable	Contains multiple port address ranges that claimed by PnP manager.
+ *	@param	[in] AddressRangeCount		Count of port address ranges.
  *	@return								Returns FALSE if non-accessible, TRUE otherwise.
  *	
  */
@@ -475,25 +465,24 @@ DioTestPortRange(
 	if (StartAddress > EndAddress)
 		return FALSE;
 
-#ifdef __DIO_DENY_CONVENTIONAL_PORT_ACCESS
-	for (i = 0; i < ARRAYSIZE(DiopConventionalPortAddressRangeListForDeny); i++)
+	for (i = 0; i < AddressRangeCount; i++)
 	{
-		DIO_PORT_RANGE *AddressRange = DiopConventionalPortAddressRangeListForDeny + i;
+		DIO_PORT_RANGE *AddressRange = AddressRangesAvailable + i;
 
-		if ((StartAddress <= AddressRange->StartAddress && AddressRange->StartAddress <= EndAddress) || 
-			(StartAddress <= AddressRange->EndAddress && AddressRange->EndAddress <= EndAddress))
-			return FALSE;
+		if (AddressRange->StartAddress <= StartAddress && StartAddress <= AddressRange->EndAddress && 
+			AddressRange->StartAddress <= EndAddress && EndAddress <= AddressRange->EndAddress && 
+			StartAddress <= EndAddress)
+			return TRUE;
 	}
-#endif
 
-	return TRUE;
+	return FALSE;
 }
 
 
 BOOLEAN
-DiopIsConflictingPortRange(
-	IN ULONG AddressRangeCount, 
-	IN DIO_PORT_RANGE *AddressRanges)
+DiopIsPortRangesOverlapping(
+	IN DIO_PORT_RANGE *AddressRanges, 
+	IN ULONG AddressRangeCount)
 {
 	ULONG i, j;
 
@@ -503,7 +492,8 @@ DiopIsConflictingPortRange(
 		{
 			if (DIO_IS_CONFLICTING_ADDRESSES(
 				AddressRanges[i].StartAddress, AddressRanges[i].EndAddress, 
-				AddressRanges[j].StartAddress, AddressRanges[j].EndAddress))
+				AddressRanges[j].StartAddress, AddressRanges[j].EndAddress) || 
+				AddressRanges[j].StartAddress > AddressRanges[j].EndAddress)
 				return FALSE;
 		}
 	}
@@ -516,7 +506,9 @@ DiopValidatePacketBuffer(
 	IN DIO_PACKET *Packet, 
 	IN ULONG InputBufferLength, 
 	IN ULONG OutputBufferLength, 
-	IN ULONG IoControlCode)
+	IN ULONG IoControlCode, 
+	IN DIO_PORT_RANGE *AddressRangesAvailable, 
+	IN ULONG AddressRangeCount)
 /**
  *	@brief	Validates the packet buffer.
  *	
@@ -526,6 +518,8 @@ DiopValidatePacketBuffer(
  *	@param	[in] InputBufferLength		Length of input buffer which points the packet structure.
  *	@param	[in] OutputBufferLength		Length of output buffer.
  *	@param	[in] IoControlCode			Related IOCTL code of packet buffer.
+ *	@param	[in] AddressRangesAvailable	Contains multiple port address ranges that claimed by PnP manager.
+ *	@param	[in] AddressRangeCount		Count of port address ranges.
  *	@return								Non-zero if successful.
  *	
  */
@@ -608,7 +602,7 @@ DiopValidatePacketBuffer(
 			{
 				DIO_PORT_RANGE *AddressRange = Packet->PortIo.AddressRange + i;
 
-				if (DioTestPortRange(AddressRange->StartAddress, AddressRange->EndAddress))
+				if (DioTestPortRange(AddressRange->StartAddress, AddressRange->EndAddress, AddressRangesAvailable, AddressRangeCount))
 					DataLength += AddressRange->EndAddress - AddressRange->StartAddress + 1;
 			}
 
@@ -694,6 +688,8 @@ BOOLEAN
 DioPortIo(
 	IN DIO_PORT_RANGE *Ranges, 
 	IN ULONG Count, 
+	IN DIO_PORT_RANGE *AvailableRanges, 
+	IN ULONG AvailableRangeCount, 
 	OPTIONAL IN OUT PUCHAR Buffer, 
 	IN ULONG BufferLength, 
 	OUT ULONG *TransferredLength, 
@@ -703,6 +699,8 @@ DioPortIo(
  *	
  *	@param	[in] Ranges					Contains one or multiple port range(s).
  *	@param	[in] Count					Number of port range.
+ *	@param	[in] AvailableRanges		Contains multiple port address ranges that claimed by PnP manager.
+ *	@param	[in] AvailableRangeCount	Count of port address ranges.
  *	@param	[in, out, opt] Buffer		Address of I/O buffer. This parameter can be NULL.\n
  *										case 1) Buffer == NULL\n
  *										- Returns the test result whether the access is allowed or not.\n
@@ -731,11 +729,20 @@ DioPortIo(
 		return FALSE;
 	}
 
+	if (!DIO_IS_OPTION_ENABLED(DIO_CFGB_ALLOW_PORT_RANGE_OVERLAP))
+	{
+		if (DiopIsPortRangesOverlapping(Ranges, Count))
+		{
+			DFTRACE_DBG("Range overlapping detected\n");
+			return FALSE;
+		}
+	}
+
 	for (i = 0; i < Count; i++)
 	{
 		DFTRACE_DBG("[%d] 0x%x - 0x%x\n", i, Ranges[i].StartAddress, Ranges[i].EndAddress);
 
-		if (!DioTestPortRange(Ranges[i].StartAddress, Ranges[i].EndAddress))
+		if (!DioTestPortRange(Ranges[i].StartAddress, Ranges[i].EndAddress, AvailableRanges, AvailableRangeCount))
 		{
 			DFTRACE_DBG("[%d] Inaccessible address range\n", i);
 			return FALSE;
@@ -998,6 +1005,27 @@ DioDispatchNotSupported(
 	return Status;
 }
 
+NTSTATUS
+DioDispatchSystemControl(
+	IN PDEVICE_OBJECT DeviceObject, 
+	IN PIRP Irp)
+/**
+ *	@brief	Dispatch routine for IRP_MJ_SYSTEM_CONTROL.
+ *
+ *  This routine does nothing without passing down IRP to the lower level device.
+ *	
+ *	@param	[in] DeviceObject			Device object.
+ *	@param	[in] Irp					Irp object.
+ *	@return								STATUS_SUCCESS always.
+ *	
+ */
+{
+	// I hate WMI...
+	DIO_DEVICE_EXTENSION *DeviceExtension = (DIO_DEVICE_EXTENSION *)DeviceObject->DeviceExtension;
+
+	IoSkipCurrentIrpStackLocation(Irp);
+	return IoCallDriver(DeviceExtension->LowerLevelDeviceObject, Irp);
+}
 
 NTSTATUS
 DioDispatchCreate(
@@ -1091,6 +1119,7 @@ DioDispatchIoControl(
  *	
  */
 {
+	DIO_DEVICE_EXTENSION *DeviceExtension;
 	PIO_STACK_LOCATION IoStackLocation;
 	ULONG IoControlCode;
 	ULONG InputBufferLength;
@@ -1110,6 +1139,7 @@ DioDispatchIoControl(
 	Status = STATUS_SUCCESS;
 	Critical = FALSE;
 
+	DeviceExtension = (DIO_DEVICE_EXTENSION *)DeviceObject->DeviceExtension;
 	IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
 	IoControlCode = IoStackLocation->Parameters.DeviceIoControl.IoControlCode;
 	InputBufferLength = IoStackLocation->Parameters.DeviceIoControl.InputBufferLength;
@@ -1145,7 +1175,8 @@ DioDispatchIoControl(
 		//
 
 		Packet = (DIO_PACKET *)Irp->AssociatedIrp.SystemBuffer;
-		if (!DiopValidatePacketBuffer(Packet, InputBufferLength, OutputBufferLength, IoControlCode))
+		if (!DiopValidatePacketBuffer(Packet, InputBufferLength, OutputBufferLength, IoControlCode, 
+				DeviceExtension->PortResources, DeviceExtension->PortRangeCount))
 		{
 			DFTRACE_DBG("Buffer validation failed\n");
 			Status = STATUS_INVALID_PARAMETER;
@@ -1188,6 +1219,8 @@ DioDispatchIoControl(
 
 			if (!DioPortIo(Packet->PortIo.AddressRange, 
 							Packet->PortIo.RangeCount, 
+							DeviceExtension->PortResources, 
+							DeviceExtension->PortRangeCount, 
 							PACKET_PORT_IO_GET_DATA_ADDRESS(&Packet->PortIo), 
 							OutputBufferLength - DataOffset, 
 							&OutputActualLength, 
@@ -1210,6 +1243,8 @@ DioDispatchIoControl(
 
 			if (!DioPortIo(Packet->PortIo.AddressRange, 
 							Packet->PortIo.RangeCount, 
+							DeviceExtension->PortResources, 
+							DeviceExtension->PortRangeCount, 
 							PACKET_PORT_IO_GET_DATA_ADDRESS(&Packet->PortIo), 
 							InputBufferLength - DataOffset, 
 							NULL, 
@@ -1238,10 +1273,7 @@ DioDispatchIoControl(
 
 	IofCompleteRequest(Irp, IO_NO_INCREMENT);
 
-	if (Critical && !NT_SUCCESS(Status))
-		return Status;
-
-	return STATUS_SUCCESS;
+	return Status;
 }
 
 VOID
@@ -1258,17 +1290,9 @@ DioDriverUnload(
 #ifdef __DIO_SUPPORT_UNLOAD
 	DFTRACE("Shutdowning...\n");
 
-//	// Detach our FDO from the PDO first.
-//	IoDetachDevice(DiopPhysicalDeviceObject);
-//
-//	IoDeleteSymbolicLink(&DiopDosDeviceName);
-//	IoDeleteDevice(DiopDeviceObject);
-
 	PsSetCreateProcessNotifyRoutine(DiopCreateProcessNotifyRoutine, TRUE);
 
 	DioUnregister();
-
-//	DioPnpUnclaimHardwareResources(DriverObject);
 
 	ZwClose(DiopRegKeyHandle);
 
@@ -1381,8 +1405,9 @@ DioAddDevice(
 		DeviceExtension->FunctionDeviceSymbolicLinkName = DosDeviceName;
 		DeviceExtension->DeviceState = 0;
 		DeviceExtension->PortRangeCount = 0;
+		DeviceExtension->DeviceRemoved = FALSE;
 		
-		IoInitializeRemoveLock(&DeviceExtension->RemoveLock, 'pOID', 0, 0);
+		IoInitializeRemoveLock(&DeviceExtension->RemoveLock, DIO_POOL_TAG, 0, 0);
 
 
 		//
@@ -1475,6 +1500,7 @@ DriverEntry(
 		//    The I/O manager will not call PnP IRP_MN_START_DEVICE.
 		//    To issue IRP_MN_START_DEVICE, we'll use IoInvalidateDeviceState().
 		//    The driver must handle the PnP IRP_MN_QUERY_PNP_DEVICE_STATE to work properly.
+		// 7. And there are many, many things to do in PnP handler...
 		// 
 
 		Status = DioOpenDriverParametersRegistry(RegistryPath, &KeyHandle);
@@ -1527,6 +1553,7 @@ DriverEntry(
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DioDispatchIoControl;
 	DriverObject->MajorFunction[IRP_MJ_CLEANUP] = DioDispatchCleanup;
 	DriverObject->MajorFunction[IRP_MJ_PNP] = DioDispatchPnP;
+	DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = DioDispatchSystemControl; // WMI
 	DriverObject->DriverExtension->AddDevice = DioAddDevice;
 #ifdef __DIO_SUPPORT_UNLOAD
 	DriverObject->DriverUnload = DioDriverUnload;

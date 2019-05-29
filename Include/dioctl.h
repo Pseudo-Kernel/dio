@@ -89,7 +89,8 @@ typedef struct _DIO_PACKET_PORT_IO {
 // Structure for Configuration Read/Write.
 //
 
-#define DIO_CFGB_SHOW_DEBUG_OUTPUT				0x000000001
+#define DIO_CFGB_SHOW_DEBUG_OUTPUT				0x00000001
+#define DIO_CFGB_ALLOW_PORT_RANGE_OVERLAP		0x00000002
 
 /**
  *	@brief	Configuration structure.

@@ -6,27 +6,24 @@
 // Definitions for options to compile.
 //
 
-#define	__DIO_DENY_CONVENTIONAL_PORT_ACCESS		// To deny the conventional port access
 #define	__DIO_SUPPORT_UNLOAD					// To support driver unload
 //#define __DIO_IGNORE_BREAKPOINT					// This option overrides DIO_IN_DEBUG_BREAKPOINT() to do nothing.
 //#define __DIO_IOCTL_TEST_MODE					// Define if you want to run with IOCTL test mode only. Real port I/O is not performed.
-
-// Port address range for maximum 640 (=128x5) channels. (640 channels for input, 640 channels for output)
-#define DIO_PORT_ADDRESS_START					0x7000
-#define DIO_PORT_ADDRESS_END					0x704f
-
-C_ASSERT(
-	DIO_PORT_ADDRESS_START < DIO_PORT_ADDRESS_END && 
-	DIO_PORT_ADDRESS_START < 0x10000 && 
-	DIO_PORT_ADDRESS_END < 0x10000);
 
 
 //
 // Global helper macros.
 //
 
-#define DIO_ALLOC(_size)						ExAllocatePoolWithTag(NonPagedPool, (_size), 'OIDp')
-#define DIO_FREE(_addr)							ExFreePoolWithTag((_addr), 'OIDp')
+#define DIO_POOL_TAG							'OIDp'
+
+#define DIO_ALLOC(_size)						ExAllocatePoolWithTag(NonPagedPool, (_size), DIO_POOL_TAG)
+#define DIO_FREE(_addr)							ExFreePoolWithTag((_addr), DIO_POOL_TAG)
+
+#define DIO_IS_OPTION_ENABLED(_opt)	(			\
+	(DiopConfigurationBlock.ConfigurationBits	\
+		& ((ULONG)(_opt))) == ((ULONG)(_opt))	\
+)
 
 #define	DTRACE(_fmt, ...)						DioDbgTrace(TRUE, (_fmt), __VA_ARGS__)
 #define	DFTRACE(_fmt, ...)						DioDbgTrace(TRUE, ("%s: " _fmt), __FUNCTION__, __VA_ARGS__)
@@ -43,10 +40,10 @@ C_ASSERT(
 #ifdef __DIO_IGNORE_BREAKPOINT
 #define	DIO_IN_DEBUG_BREAKPOINT()
 #else
-#define	DIO_IN_DEBUG_BREAKPOINT() {		\
-	if (!(*KdDebuggerNotPresent)) {		\
-		__debugbreak();					\
-	}									\
+#define	DIO_IN_DEBUG_BREAKPOINT() {								\
+	if (!(*KdDebuggerNotPresent) && DiopBreakOnKdAttached) {	\
+		__debugbreak();											\
+	}															\
 }
 #endif
 
@@ -59,6 +56,7 @@ typedef struct _DIO_DEVICE_EXTENSION {
 
 	PNP_DEVICE_STATE DeviceState;	// Our device state
 	IO_REMOVE_LOCK RemoveLock;		// Remove lock
+	BOOLEAN DeviceRemoved;
 
 	ULONG PortRangeCount;
 	DIO_PORT_RANGE PortResources[DIO_MAXIMUM_PORT_RANGES];
@@ -78,11 +76,9 @@ extern PDRIVER_OBJECT DiopDriverObject;
 extern KSPIN_LOCK DiopPortReadWriteLock;
 extern KSPIN_LOCK DiopProcessLock;
 extern volatile PEPROCESS DiopRegisteredProcess;
+extern BOOLEAN DiopBreakOnKdAttached;
 
 extern DIO_CONFIGURATION_BLOCK DiopConfigurationBlock;
-
-extern ULONG DiopHwPortRangeCount;
-extern DIO_PORT_RANGE DiopHwPortResources[DIO_MAXIMUM_PORT_RANGES];
 
 
 //
@@ -165,19 +161,23 @@ DioDbgDumpBytes(
 BOOLEAN
 DioTestPortRange(
 	IN USHORT StartAddress, 
-	IN USHORT EndAddress);
+	IN USHORT EndAddress, 
+	IN DIO_PORT_RANGE *AddressRangesAvailable, 
+	IN ULONG AddressRangeCount);
 
 BOOLEAN
-DiopIsConflictingPortRange(
-	IN ULONG AddressRangeCount, 
-	IN DIO_PORT_RANGE *AddressRanges);
+DiopIsPortRangesOverlapping(
+	IN DIO_PORT_RANGE *AddressRanges, 
+	IN ULONG AddressRangeCount);
 
 BOOLEAN
 DiopValidatePacketBuffer(
 	IN DIO_PACKET *Packet, 
 	IN ULONG InputBufferLength, 
 	IN ULONG OutputBufferLength, 
-	IN ULONG IoControlCode);
+	IN ULONG IoControlCode, 
+	IN DIO_PORT_RANGE *AddressRangesAvailable, 
+	IN ULONG AddressRangeCount);
 
 BOOLEAN
 DiopInternalPortIo(
@@ -190,6 +190,8 @@ BOOLEAN
 DioPortIo(
 	IN DIO_PORT_RANGE *Ranges, 
 	IN ULONG Count, 
+	IN DIO_PORT_RANGE *AvailableRanges, 
+	IN ULONG AvailableRangeCount, 
 	OPTIONAL IN OUT PUCHAR Buffer, 
 	IN ULONG BufferLength, 
 	OUT ULONG *TransferredLength, 

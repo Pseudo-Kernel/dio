@@ -12,28 +12,30 @@ DiopPnpIoCompletionRoutine(
 	IN PVOID Context)
 {
 	PKEVENT Event = (PKEVENT)Context;
+
+	// Notify the I/O completion
 	KeSetEvent(Event, IO_NO_INCREMENT, FALSE);
 
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
 NTSTATUS
-DioPnpLowerLevelPassThru(
+DioPnpCallLowerDriverAsynchronous(
 	IN PDEVICE_OBJECT DeviceObject, 
 	IN PIRP Irp)
 {
 	PIO_STACK_LOCATION IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
 	ULONG MinorFunction = IoStackLocation->MinorFunction;
 	PSZ MinorFunctionName = DioPnpRtlLookupMinorFunctionName(MinorFunction);
+	DIO_DEVICE_EXTENSION *DeviceExtension = (DIO_DEVICE_EXTENSION *)DeviceObject->DeviceExtension;
 
 	DFTRACE("Skipping the PnP IRP, Minor %d (%s)\n", MinorFunction, MinorFunctionName);
-
 	IoSkipCurrentIrpStackLocation(Irp);
-	return IoCallDriver(DeviceObject, Irp);
+	return IoCallDriver(DeviceExtension->LowerLevelDeviceObject, Irp);
 }
 
 NTSTATUS
-DioPnpCallNextDriverSynchronous(
+DioPnpCallLowerDriver(
 	IN PDEVICE_OBJECT DeviceObject, 
 	IN PIRP Irp)
 {
@@ -125,22 +127,14 @@ DioPnpStartDevice(
 	return STATUS_SUCCESS;
 }
 
-
-//	case IRP_MN_QUERY_REMOVE_DEVICE:	// Mandatory
-//	case IRP_MN_REMOVE_DEVICE:			// Mandatory
-//	case IRP_MN_CANCEL_REMOVE_DEVICE:	// Mandatory
-//	case IRP_MN_STOP_DEVICE:			// Mandatory
-
-NTSTATUS
-DioPnpQueryRemoveDevice(
+VOID
+DioPnpStopDevice(
 	IN PDEVICE_OBJECT DeviceObject, 
 	IN PIRP Irp)
 {
-	// Info In/Out : None, None
-	return STATUS_SUCCESS;
 }
 
-NTSTATUS
+VOID
 DioPnpRemoveDevice(
 	IN PDEVICE_OBJECT DeviceObject, 
 	IN PIRP Irp)
@@ -150,20 +144,25 @@ DioPnpRemoveDevice(
 	DeviceExtension = (DIO_DEVICE_EXTENSION *)DeviceObject->DeviceExtension;
 
 	//
-	// FIXME : Additionally stop the device.
-	//         Acquire-Release the remove lock while processing remove.
+	// NOTE : Caller must stop the device before this call.
+	//        Acquire-Release the remove lock while processing remove.
 	//         
-	//         For more information how to handle the PnP IRPs, see following:
-	//         https://github.com/microsoft/Windows-driver-samples/blob/master/serial/serenum/pnp.c
+	//        For more information how to handle the PnP IRPs, see the following:
+	//        https://github.com/microsoft/Windows-driver-samples/blob/master/serial/serenum/pnp.c
 	//
 
-	RtlFreeUnicodeString(&DeviceExtension->PhysicalDeviceSymbolicLinkName);
-	IoDeleteSymbolicLink(&DeviceExtension->FunctionDeviceSymbolicLinkName);
+	if (!DeviceExtension->DeviceRemoved)
+	{
+		DeviceExtension->DeviceRemoved = TRUE;
 
-	IoDetachDevice(DeviceExtension->LowerLevelDeviceObject);
-	IoDeleteDevice(DeviceObject);
+		IoSetDeviceInterfaceState(&DeviceExtension->PhysicalDeviceSymbolicLinkName, FALSE);
+		RtlFreeUnicodeString(&DeviceExtension->PhysicalDeviceSymbolicLinkName);
 
-	return STATUS_SUCCESS;
+		IoDeleteSymbolicLink(&DeviceExtension->FunctionDeviceSymbolicLinkName);
+
+		IoDetachDevice(DeviceExtension->LowerLevelDeviceObject);
+		IoDeleteDevice(DeviceObject);
+	}
 }
 
 
@@ -185,6 +184,7 @@ DioDispatchPnP(
 	ULONG MinorFunction;
 	DIO_DEVICE_EXTENSION *DeviceExtension;
 	NTSTATUS Status = STATUS_SUCCESS;
+	BOOLEAN SkipAndForgetIrp = FALSE;
 
 	DeviceExtension = (DIO_DEVICE_EXTENSION *)DeviceObject->DeviceExtension;
 	IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
@@ -195,28 +195,66 @@ DioDispatchPnP(
 
 	DIO_IN_DEBUG_BREAKPOINT();
 
-	// 1, 2, 3, 7, 9, 19, 20
 	switch (MinorFunction)
 	{
-	case IRP_MN_START_DEVICE:			// Mandatory* (not called because PnP manager thinks the device is already started at AddDevice.)
+	case IRP_MN_START_DEVICE:			// Mandatory*
+		Status = DioPnpCallLowerDriver(DeviceObject, Irp);
+		if (!NT_SUCCESS(Status))
+			break;
+
 		Status = DioPnpStartDevice(DeviceObject, Irp);
 		break;
 
 	case IRP_MN_QUERY_REMOVE_DEVICE:	// Mandatory
+		//
+		// 1. Set Irp->IoStatus.Status to STATUS_SUCCESS.
+		// 2. Set up the next stack location with IoSkipCurrentIrpStackLocation and pass the IRP to the next lower driver with IoCallDriver.
+		// 3. Propagate the status from IoCallDriver as the return status from the DispatchPnP routine.
+		// 4. Do not complete the IRP.
+		//
+
+		Irp->IoStatus.Status = STATUS_SUCCESS;
+		SkipAndForgetIrp = TRUE;
 		break;
 
 	case IRP_MN_REMOVE_DEVICE:			// Mandatory
-		Status = DioPnpRemoveDevice(DeviceObject, Irp);
+		DioPnpStopDevice(DeviceObject, Irp);
+		Status = DioPnpCallLowerDriverAsynchronous(DeviceObject, Irp);
+		DioPnpRemoveDevice(DeviceObject, Irp);
+		Irp->IoStatus.Status = STATUS_SUCCESS;
+		return Status;
 		break;
 
 	case IRP_MN_CANCEL_REMOVE_DEVICE:	// Mandatory
+		Status = DioPnpCallLowerDriver(DeviceObject, Irp);
+		Irp->IoStatus.Status = STATUS_SUCCESS;
+		IoCompleteRequest(Irp, IO_NO_INCREMENT);
+		return STATUS_SUCCESS;
+		break;
+
 	case IRP_MN_STOP_DEVICE:			// Mandatory
+		DioPnpStopDevice(DeviceObject, Irp);
+		SkipAndForgetIrp = TRUE;
+		break;
+
 	case IRP_MN_QUERY_STOP_DEVICE:		// Mandatory
+		//
+		// 1. Set Irp->IoStatus.Status to STATUS_SUCCESS.
+		// 2. Set up the next stack location with IoSkipCurrentIrpStackLocation and pass the IRP to the next lower driver with IoCallDriver.
+		// 3. Propagate the status from IoCallDriver as the return status from the DispatchPnP routine.
+		// 4. Do not complete the IRP.
+		//
+
+		// FIXME : Do our work before skip the IRP
+		SkipAndForgetIrp = TRUE;
+		break;
+
 	case IRP_MN_CANCEL_STOP_DEVICE:		// Mandatory
+		// FIXME : Do our work before skip the IRP
+		SkipAndForgetIrp = TRUE;
 		break;
 
 //	case IRP_MN_QUERY_DEVICE_RELATIONS:	// Non-PnP device must not handle this
-
 //	case IRP_MN_QUERY_INTERFACE: // Maybe we dont need to handle this
 //	case IRP_MN_QUERY_CAPABILITIES:
 //	case IRP_MN_QUERY_RESOURCES: // for PDO
@@ -229,23 +267,32 @@ DioDispatchPnP(
 //	case IRP_MN_EJECT:
 //	case IRP_MN_SET_LOCK:
 //	case IRP_MN_QUERY_ID: // opt
-	case IRP_MN_QUERY_PNP_DEVICE_STATE:
-		Irp->IoStatus.Information = DeviceExtension->DeviceState;
-		break;
+
+//	case IRP_MN_QUERY_PNP_DEVICE_STATE:
+//		Irp->IoStatus.Information = DeviceExtension->DeviceState;
+//		break;
+
 //	case IRP_MN_QUERY_BUS_INFORMATION:
 //	case IRP_MN_DEVICE_USAGE_NOTIFICATION:
 
 	case IRP_MN_SURPRISE_REMOVAL:		// Mandatory
+		Irp->IoStatus.Status = STATUS_SUCCESS;
+		DioPnpStopDevice(DeviceObject, Irp);
+		Status = DioPnpCallLowerDriverAsynchronous(DeviceObject, Irp);
+		DioPnpRemoveDevice(DeviceObject, Irp);
+		return Status;
 		break;
 
 	default:
-		DFTRACE("PnP minor function %d (%s) - Not supported\n", MinorFunction, MinorFunctionString);
-		Status = STATUS_NOT_SUPPORTED;
+		SkipAndForgetIrp = TRUE;
 		break;
 	}
 
-//		IoSkipCurrentIrpStackLocation(Irp);
-//		return IoCallDriver(DiopStackTopDeviceObject, Irp);
+	if (SkipAndForgetIrp)
+	{
+		// Skip and forget the IRP
+		return DioPnpCallLowerDriverAsynchronous(DeviceObject, Irp);
+	}
 
 	Irp->IoStatus.Status = Status;
 	IofCompleteRequest(Irp, IO_NO_INCREMENT);

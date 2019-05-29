@@ -9,15 +9,16 @@ Signature = "$Windows NT$"
 Provider = %DIOPort.INFProvider%
 ClassGUID = {75BEC7D6-7F4E-4DAE-9A2B-B4D09B839B18}
 Class = DIO
-DriverVer = 05/29/2019,1.2.1.0
+DriverVer = %DIOPort.Date%,%DIOPort.Version%
 CatalogFile.NT = DIOPortx86.cat
 CatalogFile.NTamd64 = DIOPortx64.cat
 
-[ClassInstall]
-AddReg = Class.AddReg
-
 [ClassInstall32.NT]
 AddReg = Class.AddReg
+
+[ClassInstall32.NTamd64]
+AddReg = Class.AddReg
+
 
 [Class.AddReg]
 HKR,,,,%DIOPort.ClassDesc%
@@ -45,7 +46,7 @@ DefaultDestDir = 12
 
 [DIOPort]
 CopyFiles = DIOPort.CopyFiles
-LogConfig = DIOPort.LogConfig0, DIOPort.LogConfig1, DIOPort.LogConfig2, DIOPort.LogConfig3
+LogConfig = DIOPort.LogConfig0,DIOPort.LogConfig1,DIOPort.LogConfig2,DIOPort.LogConfig3
 
 ;[DIOPort.FactDef]
 ;ConfigPriority = DESIRED
@@ -98,9 +99,11 @@ DIOPort.sys = 1,,        ; File for disk #1
 ;
 
 [Strings]
+DIOPort.Date = "05/29/2019"
+DIOPort.Version = "1.2.1.0"
 DIOPort.INFProvider = "INF_Provider_Name"
 DIOPort.Manufacturer = "Manufacturer_Name"
 DIOPort.HWID = "DETECTEDIsa\DIOPort"
 DIOPort.ClassDesc = "Digital I/O"
 DIOPort.DeviceDesc = "Digital I/O Channel Controller Board"
-DIOPort.DiskId1 = " Installation Disk #1"
+DIOPort.DiskId1 = "Installation Disk #1"
