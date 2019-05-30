@@ -7,7 +7,7 @@
 //
 
 #define	__DIO_SUPPORT_UNLOAD					// To support driver unload
-//#define __DIO_IGNORE_BREAKPOINT					// This option overrides DIO_IN_DEBUG_BREAKPOINT() to do nothing.
+#define __DIO_IGNORE_BREAKPOINT					// This option overrides DIO_IN_DEBUG_BREAKPOINT() to do nothing.
 //#define __DIO_IOCTL_TEST_MODE					// Define if you want to run with IOCTL test mode only. Real port I/O is not performed.
 
 

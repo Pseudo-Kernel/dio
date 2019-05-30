@@ -15,6 +15,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DIOUMTest", "DIOUMTest\DIOU
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CertDelete", "CertDelete\CertDelete.vcxproj", "{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PnPDevReqTest", "PnPDevReqTest\PnPDevReqTest.vcxproj", "{A2ACA162-8D5B-4818-B992-91D407247620}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -55,6 +57,14 @@ Global
 		{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}.Release|Win32.Build.0 = Release|Win32
 		{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}.Release|x64.ActiveCfg = Release|Win32
 		{BA63E4E9-13A3-443E-98FE-8C1B91FA29F4}.Release|x64.Build.0 = Release|Win32
+		{A2ACA162-8D5B-4818-B992-91D407247620}.Debug|Win32.ActiveCfg = Debug|Win32
+		{A2ACA162-8D5B-4818-B992-91D407247620}.Debug|Win32.Build.0 = Debug|Win32
+		{A2ACA162-8D5B-4818-B992-91D407247620}.Debug|x64.ActiveCfg = Debug|x64
+		{A2ACA162-8D5B-4818-B992-91D407247620}.Debug|x64.Build.0 = Debug|x64
+		{A2ACA162-8D5B-4818-B992-91D407247620}.Release|Win32.ActiveCfg = Release|Win32
+		{A2ACA162-8D5B-4818-B992-91D407247620}.Release|Win32.Build.0 = Release|Win32
+		{A2ACA162-8D5B-4818-B992-91D407247620}.Release|x64.ActiveCfg = Release|x64
+		{A2ACA162-8D5B-4818-B992-91D407247620}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

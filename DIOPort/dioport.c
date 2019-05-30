@@ -18,7 +18,10 @@ PDRIVER_OBJECT DiopDriverObject = NULL;
 KSPIN_LOCK DiopPortReadWriteLock;
 KSPIN_LOCK DiopProcessLock;
 volatile PEPROCESS DiopRegisteredProcess = NULL;
+
+#if !defined __DIO_IGNORE_BREAKPOINT
 BOOLEAN DiopBreakOnKdAttached = TRUE;
+#endif
 
 DIO_CONFIGURATION_BLOCK DiopConfigurationBlock;
 
@@ -488,17 +491,19 @@ DiopIsPortRangesOverlapping(
 
 	for (i = 0; i < AddressRangeCount; i++)
 	{
+		DIO_PORT_RANGE Range1 = AddressRanges[i];
+
 		for (j = i + 1; j < AddressRangeCount; j++)
 		{
-			if (DIO_IS_CONFLICTING_ADDRESSES(
-				AddressRanges[i].StartAddress, AddressRanges[i].EndAddress, 
-				AddressRanges[j].StartAddress, AddressRanges[j].EndAddress) || 
-				AddressRanges[j].StartAddress > AddressRanges[j].EndAddress)
-				return FALSE;
+			DIO_PORT_RANGE Range2 = AddressRanges[j];
+
+			if (Range2.StartAddress > Range2.EndAddress || 
+				DIO_IS_CONFLICTING_ADDRESSES(Range1.StartAddress, Range1.EndAddress, Range2.StartAddress, Range2.EndAddress))
+				return TRUE;
 		}
 	}
 
-	return TRUE;
+	return FALSE;
 }
 
 BOOLEAN
